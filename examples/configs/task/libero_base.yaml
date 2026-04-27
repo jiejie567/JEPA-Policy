@@ -1,0 +1,25 @@
+# @package task
+defaults:
+  - _self_
+
+env_type: "libero"
+abs_action: false
+
+dataset_repo: null
+dataset_path: null
+
+libero_root: null
+libero_camera_size: 128
+
+obs_steps: 2
+act_steps: 8
+num_envs: 8
+save_video: false
+val_dataset_percentage: 0.0
+resize_shape: null
+crop_shape:
+  - 76
+  - 76
+random_crop: true
+use_group_norm: true
+use_seq: true

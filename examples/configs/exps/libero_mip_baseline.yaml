@@ -1,0 +1,31 @@
+# @package _global_
+defaults:
+  - /optimization: default
+  - /network: chitransformer
+  - /task: mug_mug_image
+  - /log: default
+  - _self_
+
+mode: "train"
+
+optimization:
+  loss_type: "mip"
+  seed: 2
+  device: "cuda"
+  disable_cudnn: true
+  batch_size: 128
+  use_compile: false
+  dataloader_num_workers: 2
+  dataloader_persistent_workers: false
+  gradient_steps: 200000
+  auto_resume: false
+
+log:
+  log_dir: "logs/${task.env_name}_baseline_200k_run"
+  exp_name: "${task.env_name}_baseline_200k"
+  project: "mip"
+  group: "libero_${task.env_name}"
+  wandb_mode: "online"
+  eval_freq: 10000
+  eval_episodes: 40
+  save_freq: 10000
