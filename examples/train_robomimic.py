@@ -9,9 +9,9 @@ import os
 import time
 from pathlib import Path
 
-# Set MuJoCo rendering backend before importing any robomimic/mujoco modules
-# Try OSMesa for headless rendering (software rendering, more compatible but slower)
-os.environ["MUJOCO_GL"] = "osmesa"
+# Set MuJoCo rendering backend before importing any robomimic/mujoco modules.
+# Default to EGL for headless GPU rendering, while allowing callers to override.
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 import hydra
 import loguru

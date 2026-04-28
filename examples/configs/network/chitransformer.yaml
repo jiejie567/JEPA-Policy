@@ -15,3 +15,5 @@ attn_dropout: 0.1
 n_cond_layers: 0  # Number of conditioning encoder layers
 timestep_emb_type: "positional"  # Options: positional, sinusoidal, fourier
 n_future_tokens: 0
+use_causal_mask: false
+use_memory_mask: false

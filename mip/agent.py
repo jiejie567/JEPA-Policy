@@ -9,7 +9,7 @@ import torch.nn as nn
 from mip.config import Config
 from mip.flow_map import FlowMap
 from mip.interpolant import Interpolant
-from mip.losses import get_loss_fn
+from mip.losses import get_loss_fn, get_norm
 from mip.network_utils import get_encoder, get_network
 from mip.samplers import get_sampler
 from mip.sigreg import SIGReg
@@ -204,11 +204,17 @@ class TrainingAgent:
     ):
         obs_emb = self.encoder(obs, None)
         s = torch.zeros_like(delta_t, device=delta_t.device)
-        t = torch.zeros_like(delta_t, device=delta_t.device) + self.config.optimization.t_two_step
+        t = (
+            torch.zeros_like(delta_t, device=delta_t.device)
+            + self.config.optimization.t_two_step
+        )
         future_embed_target = self._encode_future_target(future_obs).detach()
         future_embed_0 = torch.zeros_like(future_embed_target)
         future_noise = torch.randn_like(future_embed_target)
-        future_embed_t = future_embed_target + (1 - self.config.optimization.t_two_step) * future_noise
+        future_embed_t = (
+            future_embed_target
+            + (1 - self.config.optimization.t_two_step) * future_noise
+        )
         act_0 = torch.zeros_like(act)
         act_noise = torch.randn_like(act)
         act_t = act + (1 - self.config.optimization.t_two_step) * act_noise
@@ -263,6 +269,97 @@ class TrainingAgent:
             "loss_future_raw": future_loss.detach(),
         }
         return future_loss, info
+
+    def _compute_joint_mip_two_step_loss(
+        self,
+        act: torch.Tensor,
+        obs: torch.Tensor | dict,
+        delta_t: torch.Tensor,
+        future_obs: torch.Tensor | dict,
+    ):
+        obs_emb = self.encoder(obs, None)
+        s = torch.zeros_like(delta_t, device=delta_t.device)
+        t = torch.zeros_like(delta_t, device=delta_t.device) + self.config.optimization.t_two_step
+        future_embed_target = self._encode_future_target(future_obs).detach()
+        future_embed_0 = torch.zeros_like(future_embed_target)
+        future_noise = torch.randn_like(future_embed_target)
+        future_embed_t = future_embed_target + (1 - self.config.optimization.t_two_step) * future_noise
+        act_0 = torch.zeros_like(act)
+        act_noise = torch.randn_like(act)
+        act_t = act + (1 - self.config.optimization.t_two_step) * act_noise
+
+        act_pred_0, _, future_embed_pred_0 = self.flow_map.net(
+            act_0, s, t, obs_emb, future_input=future_embed_0
+        )
+        act_pred_1, _, future_embed_pred_1 = self.flow_map.net(
+            act_t,
+            t,
+            torch.ones_like(t),
+            obs_emb,
+            future_input=future_embed_t,
+        )
+        if future_embed_pred_0 is None or future_embed_pred_1 is None:
+            raise RuntimeError(
+                "Joint MIP two-step loss requires a network configured with future tokens"
+            )
+
+        if future_embed_pred_0.dim() == 2 and future_embed_target.dim() == 3:
+            if future_embed_target.shape[1] != 1:
+                raise RuntimeError(
+                    "Future target has multiple steps but network only outputs one future token"
+                )
+            future_embed_target = future_embed_target[:, 0, :]
+        elif future_embed_pred_0.dim() == 3 and future_embed_target.dim() == 2:
+            if future_embed_pred_0.shape[1] != 1:
+                raise RuntimeError(
+                    "Network outputs multiple future tokens but future target has one step"
+                )
+            future_embed_pred_0 = future_embed_pred_0[:, 0, :]
+            future_embed_pred_1 = future_embed_pred_1[:, 0, :]
+
+        if future_embed_pred_0.shape != future_embed_target.shape:
+            raise RuntimeError(
+                "Future prediction/target shape mismatch: "
+                f"pred={tuple(future_embed_pred_0.shape)} "
+                f"target={tuple(future_embed_target.shape)}"
+            )
+
+        action_loss_0 = (
+            get_norm(act_pred_0 - act, self.config.optimization.norm_type)
+            / self.config.optimization.t_two_step
+        ) ** 2
+        action_loss_1 = (
+            get_norm(act_pred_1 - act, self.config.optimization.norm_type)
+            / (1 - self.config.optimization.t_two_step)
+        ) ** 2
+        action_loss = torch.mean(action_loss_0 + action_loss_1)
+
+        future_loss_0 = torch.mean(
+            (
+                (future_embed_pred_0 - future_embed_target)
+                / self.config.optimization.t_two_step
+            )
+            ** 2
+        )
+        future_loss_1 = torch.mean(
+            (
+                (future_embed_pred_1 - future_embed_target)
+                / (1 - self.config.optimization.t_two_step)
+            )
+            ** 2
+        )
+        future_loss = future_loss_0 + future_loss_1
+        loss = (
+            self.config.optimization.loss_scale * action_loss
+            + self.config.optimization.future_embed_loss_weight * future_loss
+        )
+        info = {
+            "loss_action": action_loss.detach(),
+            "loss_action_raw": action_loss.detach(),
+            "loss_future": future_loss.detach(),
+            "loss_future_raw": future_loss.detach(),
+        }
+        return loss, info
 
     def _tensor_stats(self, name: str, tensor: torch.Tensor) -> str:
         finite = torch.isfinite(tensor)
@@ -348,7 +445,23 @@ class TrainingAgent:
             and getattr(self.config.task, "future_state_enabled", False)
         )
 
-        if (
+        future_mode = getattr(
+            self.config.optimization, "future_embed_loss_mode", "direct"
+        )
+        use_joint_future_mip_loss = (
+            use_direct_future_embed_loss
+            and self.config.optimization.loss_type == "mip"
+            and future_mode == "mip_two_step"
+        )
+
+        if use_joint_future_mip_loss:
+            loss, info = self._compute_joint_mip_two_step_loss(
+                act,
+                obs_for_future,
+                delta_t,
+                future_obs,
+            )
+        elif (
             future_obs is not None
             and self.config.optimization.loss_type == "mip"
             and getattr(self.config.task, "future_state_enabled", False)
@@ -375,18 +488,8 @@ class TrainingAgent:
                 delta_t,
             )
 
-        if use_direct_future_embed_loss:
-            future_mode = getattr(
-                self.config.optimization, "future_embed_loss_mode", "direct"
-            )
-            if future_mode == "mip_two_step":
-                future_loss, future_info = self._compute_mip_two_step_future_embed_loss(
-                    act,
-                    obs_for_future,
-                    delta_t,
-                    future_obs,
-                )
-            elif future_mode == "direct":
+        if use_direct_future_embed_loss and not use_joint_future_mip_loss:
+            if future_mode == "direct":
                 future_loss, future_info = self._compute_direct_future_embed_loss(
                     act,
                     obs_for_future,

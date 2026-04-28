@@ -1,0 +1,101 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.75"];
+  node [shape=box, style="rounded,filled", fillcolor="#F7F9FC", color="#5B6B7D", fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=12, margin="0.14,0.08"];
+  edge [color="#5B6B7D", arrowsize=0.8, fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=11];
+
+  subgraph cluster_inputs {
+    label="输入";
+    color="#D7DEE8";
+    style="rounded";
+
+    x [label="x: action/state tokens\n(B, Ta, act_dim)"];
+    s [label="s: source time\n(B,)"];
+    t [label="t: target time\n(B,)"];
+    condition [label="condition: obs_emb\n(B, To, obs_dim)"];
+    future_input [label="future_input 可选\n(B, n_future_tokens, future_out_dim)"];
+  }
+
+  subgraph cluster_condition {
+    label="Condition 分支";
+    color="#BFD7F1";
+    style="rounded";
+
+    s_emb [label="map_s(s)\nSinusoidal/Positional"];
+    t_emb [label="map_t(t)\nSinusoidal/Positional"];
+    time_emb [label="concat(s_emb, t_emb)\n(B, 1, d_model)"];
+    cond_obs_emb [label="cond_obs_emb\nLinear(obs_dim -> d_model)"];
+    cond_cat [label="拼接\n[time_emb, cond_obs_emb]"];
+    cond_pos [label="+ cond_pos_emb"];
+    cond_drop [label="Dropout"];
+    cond_encoder [label="condition encoder\nTransformerEncoder 或 MLP"];
+    memory [label="memory\n(B, 1+To, d_model)"];
+  }
+
+  subgraph cluster_decoder_input {
+    label="Decoder 输入 token";
+    color="#D8EFD8";
+    style="rounded";
+
+    input_emb [label="input_emb\nLinear(act_dim -> d_model)"];
+    future_switch [shape=diamond, fillcolor="#FFF8E6", label="n_future_tokens > 0?"];
+    learned_future [label="没有 future_input:\n使用 learned future_tokens"];
+    future_emb [label="有 future_input:\nfuture_input_emb\nLinear(future_out_dim -> d_model)"];
+    token_cat [label="拼接\n[action token emb, future token emb]"];
+    pos_emb [label="+ pos_emb"];
+    dec_drop [label="Dropout"];
+  }
+
+  subgraph cluster_decoder {
+    label="共享 Transformer Decoder 主干";
+    color="#BFE7C9";
+    style="rounded";
+
+    decoder [label="TransformerDecoder\nnum_layers 层\nself-attn + cross-attn(memory)", fillcolor="#EAF8EF", color="#3D7A4B", penwidth=2];
+    ln [label="LayerNorm ln_f"];
+    dec_out [label="decoder_output_norm\n(B, Ta+n_future_tokens, d_model)"];
+  }
+
+  subgraph cluster_heads {
+    label="输出头";
+    color="#F1D0C8";
+    style="rounded";
+
+    action_slice [label="取前 Ta 个 token"];
+    action_head [label="head\nLinear(d_model -> act_dim)"];
+    action_out [label="y: predicted action\n(B, Ta, act_dim)"];
+
+    future_slice [label="取后 n_future_tokens 个 token"];
+    future_head [label="future_head\nLinear(d_model -> future_out_dim)"];
+    future_out [label="future_embed_pred\n可为 None"];
+
+    input_mean [label="x.mean(dim=1)\ninput_processor"];
+    final_mean [label="decoder action tokens mean\nfinal_processor"];
+    memory_mean [label="memory.mean(dim=1)"];
+    scalar_cat [label="拼接 scalar features"];
+    scalar_head [label="scalar_head\nLinear(... -> 1)"];
+    scalar_out [label="scalar_output\n(B, 1)"];
+  }
+
+  s -> s_emb -> time_emb;
+  t -> t_emb -> time_emb;
+  condition -> cond_obs_emb -> cond_cat;
+  time_emb -> cond_cat -> cond_pos -> cond_drop -> cond_encoder -> memory;
+
+  x -> input_emb -> token_cat;
+  future_input -> future_switch;
+  future_switch -> learned_future [label="否 / 推理 action 常见"];
+  future_switch -> future_emb [label="是 / future MIP"];
+  learned_future -> token_cat;
+  future_emb -> token_cat;
+  token_cat -> pos_emb -> dec_drop -> decoder;
+  memory -> decoder;
+  decoder -> ln -> dec_out;
+
+  dec_out -> action_slice -> action_head -> action_out;
+  dec_out -> future_slice -> future_head -> future_out;
+
+  x -> input_mean -> scalar_cat;
+  decoder -> final_mean -> scalar_cat;
+  memory -> memory_mean -> scalar_cat;
+  scalar_cat -> scalar_head -> scalar_out;
+}

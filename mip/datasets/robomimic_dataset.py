@@ -133,7 +133,7 @@ def process_demo_to_image_dataset(
             cmd.extend(camera_names)
 
         env = os.environ.copy()
-        env.setdefault("MUJOCO_GL", "osmesa")
+        env.setdefault("MUJOCO_GL", "egl")
         result = subprocess.run(
             cmd,
             capture_output=True,

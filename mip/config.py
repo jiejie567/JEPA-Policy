@@ -8,6 +8,7 @@ class LogConfig:
     project: str
     group: str
     exp_name: str
+    entity: str | None = "jepa-policy"
     eval_freq: int = 20000
     log_freq: int = 1000
     save_freq: int = 10000
@@ -29,7 +30,7 @@ class OptimizationConfig:
     discrete_dt: float = 0.01
     grad_clip_norm: float = 10.0
     ema_rate: float = 0.995
-    batch_size: int = 1024
+    batch_size: int = 256
     dataloader_num_workers: int = 8
     dataloader_persistent_workers: bool = True
     gradient_steps: int = 150000
@@ -78,6 +79,8 @@ class NetworkConfig:
     n_heads: int = 6
     n_cond_layers: int = 0
     attn_dropout: float = 0.1
+    use_causal_mask: bool = False
+    use_memory_mask: bool = False
     # UNet specific configs
     model_dim: int = 256
     kernel_size: int = 5

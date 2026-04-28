@@ -150,14 +150,14 @@ def mip_sampler(
         act_pred_0, _, future_pred_0 = flow_map.net(
             act_0,
             s,
-            s,
+            t,
             obs_emb,
             future_input=future_0,
         )
         act_pred_1, _, _ = flow_map.net(
             act_pred_0,
             t,
-            t,
+            torch.ones_like(t),
             obs_emb,
             future_input=future_pred_0,
         )

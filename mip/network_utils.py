@@ -70,6 +70,8 @@ def get_network(network_config: NetworkConfig, task_config: TaskConfig):
             timestep_emb_type=network_config.timestep_emb_type,
             n_future_tokens=network_config.n_future_tokens,
             future_out_dim=network_config.emb_dim,
+            use_causal_mask=network_config.use_causal_mask,
+            use_memory_mask=network_config.use_memory_mask,
         )
     elif network_config.network_type == "chitransformer_dino_aux":
         return network_class(

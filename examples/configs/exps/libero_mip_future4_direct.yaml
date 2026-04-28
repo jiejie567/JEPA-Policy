@@ -13,7 +13,7 @@ optimization:
   seed: 2
   device: "cuda"
   disable_cudnn: true
-  batch_size: 128
+  batch_size: 256
   use_compile: false
   dataloader_num_workers: 2
   dataloader_persistent_workers: false
@@ -35,7 +35,7 @@ task:
 log:
   log_dir: "logs/${task.env_name}_future4_direct_200k_run"
   exp_name: "${task.env_name}_future4_direct_200k"
-  project: "mip"
+  project: "jepa-policy"
   group: "libero_${task.env_name}"
   wandb_mode: "online"
   eval_freq: 10000

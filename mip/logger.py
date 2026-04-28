@@ -45,6 +45,7 @@ class Logger:
         wandb.init(
             config=OmegaConf.to_container(omega_config),
             project=config.log.project,
+            entity=config.log.entity,
             group=config.log.group,
             name=config.log.exp_name,
             id=str(uuid.uuid4()),

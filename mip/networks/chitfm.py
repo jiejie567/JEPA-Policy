@@ -78,6 +78,8 @@ class ChiTransformer(BaseNetwork):
         disable_time_embedding: bool = False,
         n_future_tokens: int = 0,
         future_out_dim: int | None = None,
+        use_causal_mask: bool = False,
+        use_memory_mask: bool = False,
     ):
         # Initialize BaseNetwork with proper parameters
         super().__init__(act_dim, Ta, obs_dim, To, d_model, num_layers)
@@ -94,6 +96,8 @@ class ChiTransformer(BaseNetwork):
         self.disable_time_embedding = disable_time_embedding
         self.n_future_tokens = n_future_tokens
         self.future_out_dim = obs_dim if future_out_dim is None else future_out_dim
+        self.use_causal_mask = use_causal_mask
+        self.use_memory_mask = use_memory_mask
 
         # input embedding stem
         self.input_emb = nn.Linear(act_dim, d_model)
@@ -313,8 +317,8 @@ class ChiTransformer(BaseNetwork):
         decoder_output = self.decoder(
             tgt=decoder_input,
             memory=memory,
-            tgt_mask=self.mask,
-            memory_mask=self.memory_mask,
+            tgt_mask=self.mask if self.use_causal_mask else None,
+            memory_mask=self.memory_mask if self.use_memory_mask else None,
         )  # (b, T, d_model)
 
         decoder_output_norm = self.ln_f(decoder_output)

@@ -14,7 +14,7 @@ t_two_step: 0.9
 discrete_dt: 0.01
 grad_clip_norm: 10.0
 ema_rate: 0.995
-batch_size: 1024
+batch_size: 256
 dataloader_num_workers: 8
 dataloader_persistent_workers: true
 gradient_steps: 300000
