@@ -126,6 +126,19 @@ class TrainingAgent:
             return self.encoder.encode_raw_dino(future_obs)
 
         encoder_input = future_obs
+        reduce_sequence_output = False
+        if (
+            isinstance(future_obs, dict)
+            and "state" in future_obs
+            and future_obs["state"].dim() == 2
+            and hasattr(self.encoder, "To")
+        ):
+            encoder_input = {
+                "state": future_obs["state"].unsqueeze(1).expand(
+                    -1, self.encoder.To, -1
+                )
+            }
+            reduce_sequence_output = True
         if getattr(self.encoder, "use_seq", False):
             encoder_input = {}
             for k, v in future_obs.items():
@@ -142,6 +155,8 @@ class TrainingAgent:
                     encoder_input[k] = v
 
         future_embed_target = self.encoder(encoder_input, None)
+        if reduce_sequence_output and future_embed_target.dim() == 3:
+            future_embed_target = future_embed_target.mean(dim=1)
         if future_embed_target.dim() == 3 and future_embed_target.shape[1] == 1:
             future_embed_target = future_embed_target[:, 0, :]
         return future_embed_target

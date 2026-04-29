@@ -211,6 +211,10 @@ def make_dataset(task_config, mode="train"):
                 abs_action=task_config.abs_action,
                 mode=mode,
                 val_dataset_percentage=task_config.val_dataset_percentage,
+                n_obs_steps=task_config.obs_steps,
+                future_state_enabled=getattr(task_config, "future_state_enabled", False),
+                future_state_steps=getattr(task_config, "future_state_steps", 1),
+                future_state_steps_list=getattr(task_config, "future_state_steps_list", []),
             )
         elif task_config.obs_type == "image":
             return RobomimicImageDataset(
@@ -246,6 +250,10 @@ class RobomimicDataset(BaseDataset):
         val_dataset_percentage=0.0,
         mode="train",
         use_key_state_for_val: bool = False,
+        n_obs_steps=None,
+        future_state_enabled=False,
+        future_state_steps=1,
+        future_state_steps_list=None,
     ):
         super().__init__()
         self.rotation_transformer = RotationTransformer(
@@ -343,17 +351,35 @@ class RobomimicDataset(BaseDataset):
                 )
                 self.replay_buffer.add_episode(episode)
 
+        future_state_steps_list = list(future_state_steps_list or [])
+        future_steps = (
+            future_state_steps_list
+            if len(future_state_steps_list) > 0
+            else [future_state_steps]
+        )
+        key_first_k = None
+        if n_obs_steps is not None and future_state_enabled:
+            key_first_k = {
+                "obs": n_obs_steps + max(future_steps),
+            }
+
         self.sampler = SequenceSampler(
             replay_buffer=self.replay_buffer,
             sequence_length=horizon,
             pad_before=pad_before,
             pad_after=pad_after,
+            key_first_k=key_first_k,
         )
 
         self.horizon = horizon
         self.pad_before = pad_before
         self.pad_after = pad_after
         self.abs_action = abs_action
+        self.n_obs_steps = n_obs_steps
+        self.future_state_enabled = future_state_enabled
+        self.future_state_steps = future_state_steps
+        self.future_state_steps_list = future_state_steps_list
+        self.future_steps = future_steps
         self.normalizer = self.get_normalizer()
 
     def undo_transform_action(self, action):
@@ -394,6 +420,23 @@ class RobomimicDataset(BaseDataset):
 
     def sample_to_data(self, sample):
         state = sample["obs"].astype(np.float32)
+        future_state = None
+        if self.future_state_enabled:
+            if self.n_obs_steps is None:
+                raise ValueError("future_state_enabled requires n_obs_steps")
+            future_frame_indices = [
+                min(self.n_obs_steps - 1 + future_step, sample["obs"].shape[0] - 1)
+                for future_step in self.future_steps
+            ]
+            future_frames = [
+                sample["obs"][future_frame_idx].astype(np.float32)
+                for future_frame_idx in future_frame_indices
+            ]
+            if len(future_frames) == 1:
+                future_state = future_frames[0]
+            else:
+                future_state = np.stack(future_frames, axis=0)
+
         state = self.normalizer["obs"]["state"].normalize(state)
 
         action = sample["action"].astype(np.float32)
@@ -402,6 +445,10 @@ class RobomimicDataset(BaseDataset):
             "obs": {"state": state},
             "action": action,
         }
+        if future_state is not None:
+            data["future_obs"] = {
+                "state": self.normalizer["obs"]["state"].normalize(future_state)
+            }
         return data
 
     def __str__(self) -> str:

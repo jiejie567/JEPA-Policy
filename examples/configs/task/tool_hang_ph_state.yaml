@@ -20,4 +20,4 @@ obs_keys: ["object", "robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos"]
 # Required keys
 horizon: 10
 act_dim: 10
-obs_dim: 20  # 14 (object) + 3 (eef_pos) + 4 (eef_quat) + 2 (gripper_qpos) = 23, but normalized to 20
+obs_dim: 53  # 44 (object) + 3 (eef_pos) + 4 (eef_quat) + 2 (gripper_qpos)
