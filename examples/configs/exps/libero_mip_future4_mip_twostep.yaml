@@ -22,7 +22,7 @@ optimization:
   future_target_type: "embedding"
   use_future_embed_loss: true
   future_embed_loss_mode: "mip_two_step"
-  future_embed_loss_weight: 0.1
+  future_embed_loss_weight: 0.01
 
 network:
   n_future_tokens: 1
@@ -33,8 +33,8 @@ task:
   future_target_type: "embedding"
 
 log:
-  log_dir: "logs/${task.env_name}_future4_mip_twostep_200k_run"
-  exp_name: "${task.env_name}_future4_mip_twostep_200k"
+  log_dir: "logs/${task.env_name}_${task.env_type}_${task.obs_type}_future4_mip_twostep_fw${optimization.future_embed_loss_weight}_seed${optimization.seed}_run"
+  exp_name: "${task.env_name}_${task.env_type}_${task.obs_type}_future4_mip_twostep_fw${optimization.future_embed_loss_weight}_seed${optimization.seed}"
   project: "jepa-policy"
   group: "libero_${task.env_name}"
   wandb_mode: "online"

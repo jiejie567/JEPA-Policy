@@ -8,7 +8,7 @@ abs_action: false
 dataset_repo: null
 dataset_path: null
 
-libero_root: null
+libero_root: /home/zzx/xj/LIBERO
 libero_camera_size: 128
 
 obs_steps: 2

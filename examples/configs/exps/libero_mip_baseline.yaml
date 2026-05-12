@@ -21,8 +21,8 @@ optimization:
   auto_resume: false
 
 log:
-  log_dir: "logs/${task.env_name}_baseline_200k_run"
-  exp_name: "${task.env_name}_baseline_200k"
+  log_dir: "logs/${task.env_name}_${task.env_type}_${task.obs_type}_baseline_seed${optimization.seed}_run"
+  exp_name: "${task.env_name}_${task.env_type}_${task.obs_type}_baseline_seed${optimization.seed}"
   project: "jepa-policy"
   group: "libero_${task.env_name}"
   wandb_mode: "online"

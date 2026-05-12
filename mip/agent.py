@@ -5,11 +5,10 @@ from copy import deepcopy
 import loguru
 import torch
 import torch.nn as nn
-
 from mip.config import Config
 from mip.flow_map import FlowMap
 from mip.interpolant import Interpolant
-from mip.losses import get_loss_fn, get_norm
+from mip.losses import get_loss_fn
 from mip.network_utils import get_encoder, get_network
 from mip.samplers import get_sampler
 from mip.sigreg import SIGReg
@@ -34,13 +33,23 @@ class TrainingAgent:
         self.loss_fn = get_loss_fn(config.optimization.loss_type)
         self.sampler = get_sampler(config.optimization.loss_type)
         self.interpolant = Interpolant(config.optimization.interp_type)
-        net = get_network(config.network, config.task)
-        report_parameters(net, model_name="Action Network")
-        self.flow_map = FlowMap(net).to(config.optimization.device)
         self.encoder = get_encoder(config.network, config.task).to(
             config.optimization.device
         )
         report_parameters(self.encoder, model_name="Encoder Network")
+        future_out_dim = None
+        if (
+            getattr(config.optimization, "use_future_embed_loss", False)
+            and getattr(config.network, "n_future_tokens", 0) > 0
+            and hasattr(self.encoder, "rgb_feature_dim")
+        ):
+            future_out_dim = self.encoder.rgb_feature_dim()
+            loguru.logger.info(
+                f"Using RGB-only future target dim: {future_out_dim}"
+            )
+        net = get_network(config.network, config.task, future_out_dim=future_out_dim)
+        report_parameters(net, model_name="Action Network")
+        self.flow_map = FlowMap(net).to(config.optimization.device)
         self.encoder_ema = deepcopy(self.encoder).requires_grad_(False)
         self.flow_map_ema = deepcopy(self.flow_map).requires_grad_(False)
         self._future_nonfinite_logged = False
@@ -122,8 +131,8 @@ class TrainingAgent:
         loguru.logger.info("Encoder frozen for training")
 
     def _encode_future_target(self, future_obs: dict[str, torch.Tensor]) -> torch.Tensor:
-        if hasattr(self.encoder, "encode_raw_dino"):
-            return self.encoder.encode_raw_dino(future_obs)
+        if hasattr(self.encoder, "encode_rgb_features"):
+            return self.encoder.encode_rgb_features(future_obs)
 
         encoder_input = future_obs
         reduce_sequence_output = False
@@ -166,6 +175,25 @@ class TrainingAgent:
             return {k: v.clone() for k, v in obs.items()}
         return obs.clone() if torch.is_tensor(obs) else obs
 
+    def _future_target_scale(self, future_embed_target: torch.Tensor) -> torch.Tensor:
+        scale = future_embed_target.detach().flatten(1).pow(2).mean(dim=1).sqrt()
+        scale = scale.clamp_min(1e-6)
+        return scale.view(-1, *([1] * (future_embed_target.dim() - 1)))
+
+    def _normalized_future_loss(
+        self,
+        future_embed_pred: torch.Tensor,
+        future_embed_target: torch.Tensor,
+        interval: float,
+    ) -> torch.Tensor:
+        target_scale = self._future_target_scale(future_embed_target)
+        normalized_error = (
+            (future_embed_pred - future_embed_target)
+            / target_scale
+            / interval
+        )
+        return (normalized_error ** 2).mean()
+
     def _compute_direct_future_embed_loss(
         self,
         act: torch.Tensor,
@@ -203,9 +231,16 @@ class TrainingAgent:
                 f"target={tuple(future_embed_target.shape)}"
             )
 
-        future_loss = torch.mean((future_embed_pred - future_embed_target) ** 2)
+        future_loss = self._normalized_future_loss(
+            future_embed_pred,
+            future_embed_target,
+            interval=1.0,
+        )
+        weighted_future_loss = (
+            self.config.optimization.future_embed_loss_weight * future_loss
+        )
         info = {
-            "loss_future": future_loss.detach(),
+            "loss_future": weighted_future_loss.detach(),
             "loss_future_raw": future_loss.detach(),
         }
         return future_loss, info
@@ -270,17 +305,22 @@ class TrainingAgent:
                 f"target={tuple(future_embed_target.shape)}"
             )
 
-        future_loss_0 = torch.mean(
-            ((future_embed_pred_0 - future_embed_target) / self.config.optimization.t_two_step)
-            ** 2
+        future_loss_0 = self._normalized_future_loss(
+            future_embed_pred_0,
+            future_embed_target,
+            interval=self.config.optimization.t_two_step,
         )
-        future_loss_1 = torch.mean(
-            ((future_embed_pred_1 - future_embed_target) / (1 - self.config.optimization.t_two_step))
-            ** 2
+        future_loss_1 = self._normalized_future_loss(
+            future_embed_pred_1,
+            future_embed_target,
+            interval=1 - self.config.optimization.t_two_step,
         )
         future_loss = future_loss_0 + future_loss_1
+        weighted_future_loss = (
+            self.config.optimization.future_embed_loss_weight * future_loss
+        )
         info = {
-            "loss_future": future_loss.detach(),
+            "loss_future": weighted_future_loss.detach(),
             "loss_future_raw": future_loss.detach(),
         }
         return future_loss, info
@@ -339,39 +379,32 @@ class TrainingAgent:
                 f"target={tuple(future_embed_target.shape)}"
             )
 
-        action_loss_0 = (
-            get_norm(act_pred_0 - act, self.config.optimization.norm_type)
-            / self.config.optimization.t_two_step
-        ) ** 2
-        action_loss_1 = (
-            get_norm(act_pred_1 - act, self.config.optimization.norm_type)
-            / (1 - self.config.optimization.t_two_step)
-        ) ** 2
+        action_loss_0 = ((act_pred_0 - act) ** 2).mean(dim=-1) / self.config.optimization.t_two_step ** 2
+        action_loss_1 = ((act_pred_1 - act) ** 2).mean(dim=-1) / (1 - self.config.optimization.t_two_step) ** 2
         action_loss = torch.mean(action_loss_0 + action_loss_1)
 
-        future_loss_0 = torch.mean(
-            (
-                (future_embed_pred_0 - future_embed_target)
-                / self.config.optimization.t_two_step
-            )
-            ** 2
+        future_loss_0 = self._normalized_future_loss(
+            future_embed_pred_0,
+            future_embed_target,
+            interval=self.config.optimization.t_two_step,
         )
-        future_loss_1 = torch.mean(
-            (
-                (future_embed_pred_1 - future_embed_target)
-                / (1 - self.config.optimization.t_two_step)
-            )
-            ** 2
+        future_loss_1 = self._normalized_future_loss(
+            future_embed_pred_1,
+            future_embed_target,
+            interval=1 - self.config.optimization.t_two_step,
         )
         future_loss = future_loss_0 + future_loss_1
         loss = (
             self.config.optimization.loss_scale * action_loss
             + self.config.optimization.future_embed_loss_weight * future_loss
         )
+        weighted_future_loss = (
+            self.config.optimization.future_embed_loss_weight * future_loss
+        )
         info = {
             "loss_action": action_loss.detach(),
             "loss_action_raw": action_loss.detach(),
-            "loss_future": future_loss.detach(),
+            "loss_future": weighted_future_loss.detach(),
             "loss_future_raw": future_loss.detach(),
         }
         return loss, info

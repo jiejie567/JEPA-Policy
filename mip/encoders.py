@@ -764,6 +764,39 @@ class MultiImageObsEncoder(BaseEncoder):
         features = torch.cat(features, dim=-1)
         return features
 
+    def encode_rgb_features(self, obs_dict):
+        """Encode only RGB observations with the vision backbone.
+
+        This is used for RGB-only future targets. Low-dimensional observations
+        are intentionally ignored here, while the normal forward path still
+        fuses RGB and low-dimensional inputs for policy conditioning.
+        """
+        features = []
+
+        for key in self.rgb_keys:
+            img = obs_dict[key]
+            if img.dim() == 5:
+                b, t, c, h, w = img.shape
+                img = img.reshape(b * t, c, h, w)
+                img = self.key_transform_map[key](img)
+                model_key = "rgb" if self.share_rgb_model else key
+                feature = self.key_model_map[model_key](img)
+                feature = feature.reshape(b, t, -1)
+            elif img.dim() == 4:
+                img = self.key_transform_map[key](img)
+                model_key = "rgb" if self.share_rgb_model else key
+                feature = self.key_model_map[model_key](img)
+            else:
+                raise RuntimeError(
+                    f"Unexpected RGB observation shape for key {key}: {tuple(img.shape)}"
+                )
+            features.append(feature)
+
+        if len(features) == 0:
+            raise RuntimeError("MultiImageObsEncoder requires at least one rgb key")
+
+        return torch.cat(features, dim=-1)
+
     def forward(self, obs_dict, mask=None):
         ori_batch_size, ori_seq_len = self.get_batch_size(obs_dict)
         features = self.multi_image_forward(obs_dict)
@@ -789,6 +822,21 @@ class MultiImageObsEncoder(BaseEncoder):
         example_output = self.multi_image_forward(example_obs_dict)
         output_shape = example_output.shape[1:]
         return output_shape[0]
+
+    @torch.no_grad()
+    def rgb_feature_dim(self):
+        example_obs_dict = {}
+        batch_size = 1
+        for key in self.rgb_keys:
+            shape = self.key_shape_map[key]
+            this_obs = torch.zeros(
+                (batch_size,) + shape,
+                dtype=self.dtype,
+                device=self.device,
+            )
+            example_obs_dict[key] = this_obs
+        example_output = self.encode_rgb_features(example_obs_dict)
+        return example_output.shape[-1]
 
     def get_batch_size(self, obs_dict):
         any_key = next(iter(obs_dict))

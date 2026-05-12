@@ -15,35 +15,17 @@ dataset_filename: "robomimic/transport/ph/image.hdf5"
 # dataset_filename: "v1.5/transport/ph/demo_v15.hdf5"
 
 max_episode_steps: 700
-render_obs_key: "shouldercamera0_image"
+render_obs_key: "robot1_eye_in_hand_image"
 
 # Required keys
 horizon: 10
-act_dim: 14  # Two robots: 7 DOF each
+act_dim: 20  # abs_action converts two 7D arms to two 10D actions
 
 shape_meta:
   action:
     shape:
-      - 14
+      - 20
   obs:
-    shouldercamera0_image:
-      shape:
-        - 3
-        - 84
-        - 84
-      type: rgb
-    shouldercamera1_image:
-      shape:
-        - 3
-        - 84
-        - 84
-      type: rgb
-    robot0_eye_in_hand_image:
-      shape:
-        - 3
-        - 84
-        - 84
-      type: rgb
     robot1_eye_in_hand_image:
       shape:
         - 3

@@ -125,7 +125,7 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
                 obs_dict[k] = obs_dict[k].flatten(end_dim=1)
         return obs_dict
 
-    def encode_raw_dino(self, obs_dict):
+    def encode_rgb_features(self, obs_dict):
         obs_dict = {k: v for k, v in obs_dict.items()}
 
         features = []
@@ -141,7 +141,7 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
                 img = img.reshape(b * t, c, h, w)
                 img = self.key_transform_map[key](img)
                 feat = self.rgb_backbone(img)
-                feat = feat.reshape(b, t, -1).mean(dim=1)  # first version: average sequence features
+                feat = feat.reshape(b, t, -1)
             elif img.dim() == 4:
                 img = self.key_transform_map[key](img)
                 feat = self.rgb_backbone(img)
@@ -157,6 +157,14 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
 
         return torch.cat(features, dim=-1)
 
+    def encode_raw_dino(self, obs_dict):
+        features = self.encode_rgb_features(obs_dict)
+        if features.dim() == 3:
+            features = features.mean(dim=1)
+        return features
+
+    def rgb_feature_dim(self):
+        return len(self.rgb_keys) * self.dino_embed_dim
 
     def multi_image_forward(self, obs_dict):
         obs_dict = {k: v for k, v in obs_dict.items()}

@@ -14,7 +14,11 @@ from mip.encoders_dino import FrozenDINOv2ObsEncoder
 from mip.networks.chitfm_dino_aux import ChiTransformerDINOAux
 
 
-def get_network(network_config: NetworkConfig, task_config: TaskConfig):
+def get_network(
+    network_config: NetworkConfig,
+    task_config: TaskConfig,
+    future_out_dim: int | None = None,
+):
     # Import inside function to avoid circular imports
     from mip.networks.chitfm import ChiTransformer
     from mip.networks.chiunet import ChiUNet
@@ -69,7 +73,7 @@ def get_network(network_config: NetworkConfig, task_config: TaskConfig):
             n_cond_layers=network_config.n_cond_layers,
             timestep_emb_type=network_config.timestep_emb_type,
             n_future_tokens=network_config.n_future_tokens,
-            future_out_dim=network_config.emb_dim,
+            future_out_dim=future_out_dim or network_config.emb_dim,
             use_causal_mask=network_config.use_causal_mask,
             use_memory_mask=network_config.use_memory_mask,
         )

@@ -49,7 +49,7 @@ class OptimizationConfig:
     freeze_encoder: bool = False
     use_future_embed_loss: bool = False
     future_embed_loss_mode: str = "direct"  # "direct" or "mip_two_step"
-    future_embed_loss_weight: float = 0.1
+    future_embed_loss_weight: float = 0.01
     future_state_loss_weight: float = 0.1
     future_target_type: str = "state"
     use_sigreg: bool = False

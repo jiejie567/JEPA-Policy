@@ -796,6 +796,11 @@ def _convert_robomimic_to_replay(
     if max_inflight_tasks is None:
         max_inflight_tasks = n_workers * 5
 
+    def create_zarr_array(group, **kwargs):
+        if hasattr(group, "create_array"):
+            return group.create_array(**kwargs)
+        return group.create_dataset(**kwargs)
+
     # parse shape_meta
     rgb_keys = []
     lowdim_keys = []
@@ -847,7 +852,8 @@ def _convert_robomimic_to_replay(
             episode_ends.append(episode_end)
         n_steps = episode_ends[-1] if episode_ends else 0
         episode_starts = [0] + episode_ends[:-1]
-        _ = meta_group.create_array(
+        _ = create_zarr_array(
+            meta_group,
             name="episode_ends",
             data=np.array(episode_ends, dtype=np.int64),
             compressor=None,
@@ -877,7 +883,8 @@ def _convert_robomimic_to_replay(
                 assert this_data.shape == (n_steps,) + tuple(
                     shape_meta["obs"][key]["shape"]
                 )
-            _ = data_group.create_array(
+            _ = create_zarr_array(
+                data_group,
                 name=key,
                 data=this_data,
                 chunks=this_data.shape,

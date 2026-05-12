@@ -151,7 +151,10 @@ def resolve_libero_asset_dir(task_config, asset_name: str) -> Path:
             return fallback
 
     try:
-        from libero.libero import get_libero_path
+        try:
+            from libero.libero import get_libero_path
+        except ImportError:
+            from libero import get_libero_path
     except ImportError as exc:
         raise ImportError(
             "LIBERO assets are required for environment creation. Install the "

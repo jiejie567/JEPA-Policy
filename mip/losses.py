@@ -163,12 +163,9 @@ def mip_loss(
     act_pred_0 = flow_map.get_velocity(s, act_0, obs_emb)
     act_pred_1 = flow_map.get_velocity(t, act_t, obs_emb)
 
-    # compute loss
-    # difference compared to tsd: no stochasticity in prediction
-    loss0 = (get_norm(act_pred_0 - act, config.norm_type) / (config.t_two_step)) ** 2
-    loss1 = (
-        get_norm(act_pred_1 - act, config.norm_type) / (1 - config.t_two_step)
-    ) ** 2
+    # compute loss — per-element MSE, normalized by interval^2
+    loss0 = ((act_pred_0 - act) ** 2).mean(dim=-1) / config.t_two_step ** 2
+    loss1 = ((act_pred_1 - act) ** 2).mean(dim=-1) / (1 - config.t_two_step) ** 2
     action_loss = torch.mean(loss0 + loss1)
     loss = config.loss_scale * action_loss
     info = {
@@ -203,8 +200,9 @@ def mip_loss(
                 ((future_pred_1 - future_target) / (1 - config.t_two_step)) ** 2
             )
             future_loss = future_loss_0 + future_loss_1
-            loss = loss + config.future_state_loss_weight * future_loss
-            info["loss_future"] = future_loss.detach()
+            weighted_future_loss = config.future_state_loss_weight * future_loss
+            loss = loss + weighted_future_loss
+            info["loss_future"] = weighted_future_loss.detach()
             info["loss_future_raw"] = future_loss.detach()
 
     return loss, info

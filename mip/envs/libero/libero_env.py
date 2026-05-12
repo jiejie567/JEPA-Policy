@@ -167,14 +167,20 @@ def _load_init_states(task_config: TaskConfig, spec) -> np.ndarray:
 
 def _build_env(task_config: TaskConfig):
     try:
-        from libero.libero.envs import OffScreenRenderEnv
+        try:
+            from libero.libero.envs import OffScreenRenderEnv
+        except ImportError:
+            from libero.envs import OffScreenRenderEnv
     except ImportError as exc:
         for import_path in get_libero_import_paths(task_config):
             if not import_path.exists():
                 continue
             sys.path.insert(0, str(import_path))
             try:
-                from libero.libero.envs import OffScreenRenderEnv
+                try:
+                    from libero.libero.envs import OffScreenRenderEnv
+                except ImportError:
+                    from libero.envs import OffScreenRenderEnv
                 break
             except ImportError:
                 continue
