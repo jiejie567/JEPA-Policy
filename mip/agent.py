@@ -154,14 +154,37 @@ class TrainingAgent:
                 # Single future frame comes in as:
                 #   rgb:    (B, C, H, W)
                 #   lowdim: (B, D)
+                #   point_cloud: (B, N, C)
                 # Multi-future frames already come in as:
                 #   rgb:    (B, T, C, H, W)
                 #   lowdim: (B, T, D)
+                #   point_cloud: (B, T, N, C)
                 # The image encoder expects the latter sequence-aware format.
-                if v.dim() in (2, 4):
+                if k == "point_cloud":
+                    if v.dim() == 3:
+                        encoder_input[k] = v.unsqueeze(1)
+                    else:
+                        encoder_input[k] = v
+                elif v.dim() in (2, 4):
                     encoder_input[k] = v.unsqueeze(1)
                 else:
                     encoder_input[k] = v
+            if (
+                isinstance(future_obs, dict)
+                and "prev_action" not in encoder_input
+                and getattr(self.encoder, "prev_action_dim", 0) > 0
+            ):
+                agent_pos = encoder_input.get("agent_pos")
+                if agent_pos is None:
+                    raise RuntimeError(
+                        "Future target encoder requires prev_action but future_obs "
+                        "does not contain agent_pos to infer its batch/time shape"
+                    )
+                encoder_input["prev_action"] = torch.zeros(
+                    (*agent_pos.shape[:-1], self.encoder.prev_action_dim),
+                    dtype=agent_pos.dtype,
+                    device=agent_pos.device,
+                )
 
         future_embed_target = self.encoder(encoder_input, None)
         if reduce_sequence_output and future_embed_target.dim() == 3:
@@ -193,6 +216,44 @@ class TrainingAgent:
             / interval
         )
         return (normalized_error ** 2).mean()
+
+    def _future_loss_weight_and_info(
+        self, future_loss: torch.Tensor, action_term: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+        future_loss_mode = getattr(
+            self.config.optimization, "future_state_loss_mode", "fixed"
+        )
+        if future_loss_mode == "fixed":
+            future_weight = torch.as_tensor(
+                self.config.optimization.future_embed_loss_weight,
+                device=future_loss.device,
+                dtype=future_loss.dtype,
+            )
+        elif future_loss_mode == "ratio":
+            future_weight = (
+                self.config.optimization.future_state_loss_ratio
+                * action_term.detach()
+                / (future_loss.detach() + 1e-8)
+            )
+            future_weight = torch.clamp(
+                future_weight,
+                min=self.config.optimization.future_state_loss_weight_min,
+                max=self.config.optimization.future_state_loss_weight_max,
+            )
+        else:
+            raise ValueError(
+                "future_state_loss_mode must be 'fixed' or 'ratio', "
+                f"got {future_loss_mode!r}."
+            )
+
+        weighted_future_loss = future_weight * future_loss
+        future_ratio = weighted_future_loss.detach() / (action_term.detach() + 1e-8)
+        return future_weight, weighted_future_loss, {
+            "loss_future": weighted_future_loss.detach(),
+            "loss_future_raw": future_loss.detach(),
+            "loss_future_weight": future_weight.detach(),
+            "loss_future_ratio": future_ratio,
+        }
 
     def _compute_direct_future_embed_loss(
         self,
@@ -236,13 +297,15 @@ class TrainingAgent:
             future_embed_target,
             interval=1.0,
         )
-        weighted_future_loss = (
-            self.config.optimization.future_embed_loss_weight * future_loss
-        )
-        info = {
-            "loss_future": weighted_future_loss.detach(),
-            "loss_future_raw": future_loss.detach(),
-        }
+        if not torch.isfinite(future_loss):
+            self._log_future_nonfinite_once(
+                future_embed_target,
+                future_embed_pred,
+                obs_emb,
+                act,
+                future_obs,
+            )
+        info = {"loss_future_raw": future_loss.detach()}
         return future_loss, info
 
     def _compute_mip_two_step_future_embed_loss(
@@ -394,19 +457,16 @@ class TrainingAgent:
             interval=1 - self.config.optimization.t_two_step,
         )
         future_loss = future_loss_0 + future_loss_1
-        loss = (
-            self.config.optimization.loss_scale * action_loss
-            + self.config.optimization.future_embed_loss_weight * future_loss
+        action_term = self.config.optimization.loss_scale * action_loss
+        future_weight, weighted_future_loss, future_info = (
+            self._future_loss_weight_and_info(future_loss, action_term)
         )
-        weighted_future_loss = (
-            self.config.optimization.future_embed_loss_weight * future_loss
-        )
+        loss = action_term + weighted_future_loss
         info = {
             "loss_action": action_loss.detach(),
             "loss_action_raw": action_loss.detach(),
-            "loss_future": weighted_future_loss.detach(),
-            "loss_future_raw": future_loss.detach(),
         }
+        info.update(future_info)
         return loss, info
 
     def _tensor_stats(self, name: str, tensor: torch.Tensor) -> str:
@@ -548,7 +608,10 @@ class TrainingAgent:
                 raise ValueError(
                     f"Unsupported future_embed_loss_mode: {future_mode}"
                 )
-            loss = loss + self.config.optimization.future_embed_loss_weight * future_loss
+            future_weight, weighted_future_loss, future_info = (
+                self._future_loss_weight_and_info(future_loss, loss)
+            )
+            loss = loss + weighted_future_loss
             info.update(future_info)
 
         if not torch.isfinite(loss):

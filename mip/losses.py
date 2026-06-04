@@ -167,18 +167,23 @@ def mip_loss(
     loss0 = ((act_pred_0 - act) ** 2).mean(dim=-1) / config.t_two_step ** 2
     loss1 = ((act_pred_1 - act) ** 2).mean(dim=-1) / (1 - config.t_two_step) ** 2
     action_loss = torch.mean(loss0 + loss1)
-    loss = config.loss_scale * action_loss
+    action_term = config.loss_scale * action_loss
+    loss = action_term
     info = {
         "loss_action": action_loss.detach(),
         "loss_action_raw": action_loss.detach(),
     }
 
     if future_obs is not None:
-        if config.future_target_type == "state" and not torch.is_tensor(future_obs):
-            raise ValueError(
-                "future_target_type='state' requires tensor future observations. "
-                "For image/dict observations, use future_target_type='embedding'."
-            )
+        if config.future_target_type == "state":
+            if isinstance(future_obs, dict) and "state" in future_obs:
+                future_obs = future_obs["state"]
+            if not torch.is_tensor(future_obs):
+                raise ValueError(
+                    "future_target_type='state' requires tensor future observations "
+                    "or a dict containing a 'state' tensor. For image/dict observations, "
+                    "use future_target_type='embedding'."
+                )
 
         if config.future_target_type == "embedding":
             if isinstance(future_obs, dict) and getattr(encoder, "use_seq", False):
@@ -200,10 +205,37 @@ def mip_loss(
                 ((future_pred_1 - future_target) / (1 - config.t_two_step)) ** 2
             )
             future_loss = future_loss_0 + future_loss_1
-            weighted_future_loss = config.future_state_loss_weight * future_loss
+            future_loss_mode = getattr(config, "future_state_loss_mode", "fixed")
+            if future_loss_mode == "fixed":
+                future_weight = torch.as_tensor(
+                    config.future_state_loss_weight,
+                    device=future_loss.device,
+                    dtype=future_loss.dtype,
+                )
+            elif future_loss_mode == "ratio":
+                future_weight = (
+                    config.future_state_loss_ratio
+                    * action_term.detach()
+                    / (future_loss.detach() + 1e-8)
+                )
+                future_weight = torch.clamp(
+                    future_weight,
+                    min=config.future_state_loss_weight_min,
+                    max=config.future_state_loss_weight_max,
+                )
+            else:
+                raise ValueError(
+                    "future_state_loss_mode must be 'fixed' or 'ratio', "
+                    f"got {future_loss_mode!r}."
+                )
+            weighted_future_loss = future_weight * future_loss
             loss = loss + weighted_future_loss
             info["loss_future"] = weighted_future_loss.detach()
             info["loss_future_raw"] = future_loss.detach()
+            info["loss_future_weight"] = future_weight.detach()
+            info["loss_future_ratio"] = (
+                weighted_future_loss.detach() / (action_term.detach() + 1e-8)
+            )
 
     return loss, info
 

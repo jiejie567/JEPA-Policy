@@ -35,6 +35,10 @@ use_future_embed_loss: false
 future_embed_loss_mode: "direct"
 future_embed_loss_weight: 0.01
 future_state_loss_weight: 0.1
+future_state_loss_mode: "fixed"
+future_state_loss_ratio: 0.05
+future_state_loss_weight_min: 0.0001
+future_state_loss_weight_max: 1.0
 future_target_type: "state"
 use_sigreg: false
 sigreg_weight: 0.0

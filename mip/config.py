@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 @dataclass
 class LogConfig:
     log_dir: str
+    model_dir: str | None
     wandb_mode: str
     project: str
     group: str
@@ -51,6 +52,10 @@ class OptimizationConfig:
     future_embed_loss_mode: str = "direct"  # "direct" or "mip_two_step"
     future_embed_loss_weight: float = 0.01
     future_state_loss_weight: float = 0.1
+    future_state_loss_mode: str = "fixed"  # "fixed" or "ratio"
+    future_state_loss_ratio: float = 0.05
+    future_state_loss_weight_min: float = 1e-4
+    future_state_loss_weight_max: float = 1.0
     future_target_type: str = "state"
     use_sigreg: bool = False
     sigreg_weight: float = 0.0
@@ -151,6 +156,7 @@ class TaskConfig:
     future_state_steps: int = 1
     future_state_steps_list: list[int] = field(default_factory=list)
     future_target_type: str = "embedding"
+    use_action_history: bool = False
 
 
 @dataclass

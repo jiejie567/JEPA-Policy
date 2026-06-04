@@ -60,15 +60,25 @@ def get_checkpoint_base_name(config: Config) -> str:
         base_name += (
             f"_{future_tag}"
             f"_{config.task.future_target_type}"
-            f"_ftok{config.network.n_future_tokens}"
+            f"_ftok{getattr(config.network, 'n_future_tokens', 0)}"
         )
         if getattr(config.optimization, "use_future_embed_loss", False):
-            future_weight = getattr(config.optimization, "future_embed_loss_weight", 0.0)
-            future_mode = getattr(config.optimization, "future_embed_loss_mode", "direct")
-            base_name += f"_fembed{future_mode}_{_format_suffix_value(future_weight)}"
+            future_mode = getattr(config.optimization, "future_state_loss_mode", "fixed")
+            if future_mode == "ratio":
+                future_ratio = getattr(config.optimization, "future_state_loss_ratio", 0.0)
+                base_name += f"_fratio{_format_suffix_value(future_ratio)}"
+            else:
+                future_weight = getattr(config.optimization, "future_embed_loss_weight", 0.0)
+                embed_mode = getattr(config.optimization, "future_embed_loss_mode", "direct")
+                base_name += f"_fembed{embed_mode}_{_format_suffix_value(future_weight)}"
         else:
-            future_weight = getattr(config.optimization, "future_state_loss_weight", 0.0)
-            base_name += f"_fw{_format_suffix_value(future_weight)}"
+            future_mode = getattr(config.optimization, "future_state_loss_mode", "fixed")
+            if future_mode == "ratio":
+                future_ratio = getattr(config.optimization, "future_state_loss_ratio", 0.0)
+                base_name += f"_fratio{_format_suffix_value(future_ratio)}"
+            else:
+                future_weight = getattr(config.optimization, "future_state_loss_weight", 0.0)
+                base_name += f"_fw{_format_suffix_value(future_weight)}"
 
     if getattr(config.optimization, "freeze_encoder", False):
         base_name += "_freezeenc"
@@ -308,6 +318,30 @@ def train(config: Config, envs, dataset, agent, logger, resume_state=None):
             agent.train()
 
 
+def _extract_success_info(info, num_envs):
+    """Return per-env success flags from vector env info["success"]."""
+    if not isinstance(info, dict) or "success" not in info:
+        return np.zeros(num_envs, dtype=bool)
+
+    success = np.asarray(info["success"])
+    if success.shape == ():
+        return np.full(num_envs, bool(success), dtype=bool)
+
+    if success.shape[0] == num_envs:
+        return np.max(success.reshape(num_envs, -1), axis=1).astype(bool)
+
+    flat_success = success.reshape(-1)
+    if flat_success.size == num_envs:
+        return flat_success.astype(bool)
+    if flat_success.size == 1:
+        return np.full(num_envs, bool(flat_success[0]), dtype=bool)
+
+    loguru.logger.warning(
+        f"Unexpected info['success'] shape {success.shape}; treating success as False."
+    )
+    return np.zeros(num_envs, dtype=bool)
+
+
 def eval(config: Config, envs, dataset, agent, logger, num_steps=1):
     """Standalone inference function to evaluate a trained agent and optionally save a video.
 
@@ -327,9 +361,12 @@ def eval(config: Config, envs, dataset, agent, logger, num_steps=1):
     episode_steps = []
     episode_success = []
     episode_kit_success = []
+    is_adroit_task = getattr(config.task, "env_type", None) == "adroit"
 
     for i in range(config.log.eval_episodes // config.task.num_envs):
-        ep_reward = [0.0] * config.task.num_envs
+        ep_reward = np.zeros(config.task.num_envs, dtype=np.float32)
+        ep_success_info = np.zeros(config.task.num_envs, dtype=bool)
+        ep_done = np.zeros(config.task.num_envs, dtype=bool)
         obs, _ = envs.reset()
         t = 0
 
@@ -390,10 +427,19 @@ def eval(config: Config, envs, dataset, agent, logger, num_steps=1):
             ]:
                 act = dataset.undo_transform_action(act)
             obs, reward, terminated, truncated, info = envs.step(act)
-            terminated | truncated
+            if is_adroit_task:
+                ep_success_info |= _extract_success_info(info, config.task.num_envs)
+                ep_done |= np.asarray(terminated, dtype=bool) | np.asarray(
+                    truncated, dtype=bool
+                )
             ep_reward += reward
             t += config.task.act_steps
-        success = [1.0 if s > 0 else 0.0 for s in ep_reward]
+            if is_adroit_task and np.all(ep_done):
+                break
+
+        reward_positive_success = [1.0 if s > 0 else 0.0 for s in ep_reward]
+        success_info = ep_success_info.astype(np.float32).tolist()
+        success = success_info if is_adroit_task else reward_positive_success
 
         # evaluate kitchen
         kit_success = []
@@ -416,10 +462,14 @@ def eval(config: Config, envs, dataset, agent, logger, num_steps=1):
     )
 
     metrics = {
-        f"mean_step_{num_steps}": np.nanmean(episode_steps),
-        f"mean_reward_{num_steps}": np.nanmean(episode_rewards),
-        f"mean_success_{num_steps}": np.nanmean(episode_success),
+        f"mean_step_{num_steps}": float(np.nanmean(episode_steps)),
+        f"mean_reward_{num_steps}": float(np.nanmean(episode_rewards)),
+        f"mean_success_{num_steps}": float(np.nanmean(episode_success)),
     }
+    if is_adroit_task:
+        loguru.logger.info(
+            f"Nstep: {num_steps} Adroit info success: {metrics[f'mean_success_{num_steps}']}"
+        )
 
     if "kitchen" in config.task.env_name:
         mean_kit_success = np.mean(np.array(episode_kit_success), axis=(0, 1))

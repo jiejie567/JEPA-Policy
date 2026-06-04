@@ -46,3 +46,55 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Runtime / experiment outputs
+logs/
+outputs/
+wandb/
+checkpoints/
+.tmp/
+.pytest_cache/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Models / checkpoints
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Datasets / artifacts
+data/
+datasets/
+*.h5
+*.hdf5
+*.zarr
+*.pkl
+*.npy
+*.npz
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Build / env
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+env/
+.uv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
