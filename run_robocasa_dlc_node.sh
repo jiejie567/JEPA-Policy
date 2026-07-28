@@ -233,6 +233,34 @@ PY
 )" || fail "PPU Torch preflight failed"
 echo "HARDWARE_OK $hardware"
 
+if (( RESUME_EXISTING == 0 )); then
+  mkdir -p "$CACHE_ROOT/wandb-smoke"
+  env -u WANDB_RUN_ID \
+    WANDB_MODE=disabled \
+    WANDB_DIR="$CACHE_ROOT/wandb-smoke" \
+    "$PYTHON" - <<'PY' || fail "fresh W&B initialization preflight failed"
+import os
+import uuid
+
+import wandb
+
+from mip.logger import _wandb_run_id_from_env
+
+assert "WANDB_RUN_ID" not in os.environ
+explicit_run_id = _wandb_run_id_from_env()
+assert explicit_run_id is None
+run = wandb.init(
+    project="robocasa-launcher-smoke",
+    id=explicit_run_id or str(uuid.uuid4()),
+    resume="allow" if explicit_run_id else None,
+    mode="disabled",
+)
+assert run is not None and run.id
+run.finish()
+print("WANDB_FRESH_INIT_OK run_id=generated")
+PY
+fi
+
 [[ -d /dev/shm && -w /dev/shm ]] ||
   fail "/dev/shm is unavailable for the shared RoboCasa array cache"
 available_shm_kib="$(df --output=avail -k /dev/shm | tail -n 1 | tr -d ' ')"
@@ -382,6 +410,7 @@ for i in "${!RUN_NAMES[@]}"; do
   printf '\n' >>"$run_dir/command.sh"
 
   wandb_run_id=""
+  wandb_run_id_env=(-u WANDB_RUN_ID)
   if (( RESUME_EXISTING != 0 )); then
     latest_wandb_run="$(find "$run_dir/wandb" -maxdepth 1 -type d -name 'run-*' \
       -printf '%T@ %f\n' 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
@@ -389,10 +418,14 @@ for i in "${!RUN_NAMES[@]}"; do
       wandb_run_id="${latest_wandb_run#run-}"
       wandb_run_id="${wandb_run_id#*-}"
     fi
+    [[ -n "$wandb_run_id" ]] ||
+      fail "resume W&B run ID is missing: $run_dir/wandb"
+    wandb_run_id_env=("WANDB_RUN_ID=$wandb_run_id")
   fi
 
   setsid env \
     -u MUJOCO_EGL_DEVICE_ID \
+    "${wandb_run_id_env[@]}" \
     CUDA_VISIBLE_DEVICES="$i" \
     JEPA_POLICY_EGL_DEVICE_ID=0 \
     ROBOCASA_USE_PPU_TORCH=1 \
@@ -401,7 +434,6 @@ for i in "${!RUN_NAMES[@]}"; do
     WANDB_MODE="$ROBOCASA_WANDB_MODE" \
     WANDB_ENTITY=jepa-policy WANDB_PROJECT=robocasa \
     WANDB_NAME="$run_name" WANDB_RUN_GROUP="${TASKS[$i]}_formal" \
-    WANDB_RUN_ID="$wandb_run_id" \
     WANDB_DIR="$REPO/wandb" \
     ROBOCASA_CACHE_ROOT="$run_cache" \
     "$TRAIN" "${args[@]}" >>"$launcher_log" 2>&1 &

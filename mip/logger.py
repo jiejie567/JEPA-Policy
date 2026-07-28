@@ -27,6 +27,16 @@ def make_dir(dir_path):
     return dir_path
 
 
+def _wandb_run_id_from_env() -> str | None:
+    """Return a usable W&B run ID and remove invalid empty values."""
+    run_id = (os.getenv("WANDB_RUN_ID") or "").strip()
+    if run_id:
+        os.environ["WANDB_RUN_ID"] = run_id
+        return run_id
+    os.environ.pop("WANDB_RUN_ID", None)
+    return None
+
+
 class Logger:
     """Primary logger object. Logs in wandb."""
 
@@ -42,7 +52,7 @@ class Logger:
         # This uploads all config (optimization, network, task, log) to wandb
         omega_config = OmegaConf.structured(config)
 
-        explicit_run_id = os.getenv("WANDB_RUN_ID")
+        explicit_run_id = _wandb_run_id_from_env()
         self._wandb_run = wandb.init(
             config=OmegaConf.to_container(omega_config),
             project=config.log.project,
