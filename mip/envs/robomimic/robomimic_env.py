@@ -9,11 +9,20 @@ import gymnasium as gym
 from loguru import logger
 
 from mip.config import TaskConfig
+from mip.envs.egl_device import override_robomimic_egl_probe
 from mip.env_utils import MultiStepWrapper, VideoRecorder, VideoRecordingWrapper
+from mip.mimicgen_utils import is_mimicgen_task
+
+
+_ROBOMIMIC_TASKS = {"can", "lift", "square", "tool_hang", "transport"}
+
+
+def _is_supported_task(task_config: TaskConfig) -> bool:
+    return task_config.env_name in _ROBOMIMIC_TASKS or is_mimicgen_task(task_config)
 
 
 def make_env(task_config: TaskConfig, idx, render=False, seed=None):
-    if task_config.env_name in ["can", "lift", "square", "tool_hang", "transport"]:
+    if _is_supported_task(task_config):
         return make_robomimic_env(task_config, idx, render, seed=seed)
     else:
         raise ValueError(f"Environment {task_config.env_name} not supported")
@@ -33,7 +42,7 @@ def make_vec_env(task_config: TaskConfig, seed=None):
         vnc_env_class = gym.vector.SyncVectorEnv
     else:
         vnc_env_class = gym.vector.AsyncVectorEnv
-    if task_config.env_name in ["can", "lift", "square", "tool_hang", "transport"]:
+    if _is_supported_task(task_config):
         try:
             envs = vnc_env_class(
                 [
@@ -57,6 +66,11 @@ def make_robomimic_env(task_config: TaskConfig, idx, render=False, seed=None):
     )
 
     def thunk():
+        if is_mimicgen_task(task_config):
+            # Importing MimicGen registers its custom robosuite environments
+            # before robomimic reconstructs the environment from HDF5 metadata.
+            import mimicgen  # noqa: F401
+
         import robomimic.utils.env_utils as EnvUtils
         import robomimic.utils.file_utils as FileUtils
         import robomimic.utils.obs_utils as ObsUtils
@@ -74,31 +88,33 @@ def make_robomimic_env(task_config: TaskConfig, idx, render=False, seed=None):
                     modality_mapping[attr.get("type", "low_dim")].append(key)
                 ObsUtils.initialize_obs_modality_mapping_from_dict(modality_mapping)
 
-            env = EnvUtils.create_env_from_metadata(
-                env_meta=env_meta,
-                render=False,
-                render_offscreen=enable_render
-                if task_config.obs_type == "image"
-                else False,
-                use_image_obs=enable_render
-                if task_config.obs_type == "image"
-                else False,
-            )
+            with override_robomimic_egl_probe():
+                env = EnvUtils.create_env_from_metadata(
+                    env_meta=env_meta,
+                    render=False,
+                    render_offscreen=enable_render
+                    if task_config.obs_type == "image"
+                    else False,
+                    use_image_obs=enable_render
+                    if task_config.obs_type == "image"
+                    else False,
+                )
             return env
 
         # Get dataset path (either from explicit path or HuggingFace download)
-        if hasattr(task_config, "dataset_repo") and hasattr(
-            task_config, "dataset_filename"
-        ):
+        explicit_dataset_path = getattr(task_config, "dataset_path", None)
+        dataset_repo = getattr(task_config, "dataset_repo", None)
+        dataset_filename = getattr(task_config, "dataset_filename", None)
+        if explicit_dataset_path:
+            dataset_path = os.path.expanduser(explicit_dataset_path)
+        elif dataset_repo and dataset_filename:
             from huggingface_hub import hf_hub_download
 
             dataset_path = hf_hub_download(
-                repo_id=task_config.dataset_repo,
-                filename=task_config.dataset_filename,
+                repo_id=dataset_repo,
+                filename=dataset_filename,
                 repo_type="dataset",
             )
-        elif hasattr(task_config, "dataset_path"):
-            dataset_path = os.path.expanduser(task_config.dataset_path)
         else:
             raise ValueError(
                 "Either dataset_repo/dataset_filename or dataset_path must be provided"

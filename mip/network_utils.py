@@ -9,7 +9,12 @@ import torch
 import torch.nn as nn
 
 from mip.config import NetworkConfig, TaskConfig
-from mip.encoders import IdentityEncoder, MLPEncoder, MultiImageObsEncoder
+from mip.encoders import (
+    IdentityEncoder,
+    MLPEncoder,
+    MultiImageObsEncoder,
+    format_crop_config_record,
+)
 from mip.encoders_dino import FrozenDINOv2ObsEncoder
 from mip.networks.chitfm_dino_aux import ChiTransformerDINOAux
 
@@ -198,15 +203,26 @@ def get_encoder(network_config: NetworkConfig, task_config: TaskConfig):
         kwargs = {
             "shape_meta": task_config.shape_meta,
             "rgb_model_name": network_config.rgb_model_name,
+            "rgb_model_weights": network_config.rgb_model_weights,
+            "imagenet_norm": network_config.imagenet_norm,
             "emb_dim": network_config.emb_dim,
             "use_seq": network_config.use_seq,
             "keep_horizon_dims": network_config.keep_horizon_dims,
             "resize_shape": task_config.resize_shape,
             "crop_shape": task_config.crop_shape,
+            "crop_ratio": getattr(task_config, "crop_ratio", None),
+            "crop_mode": getattr(task_config, "crop_mode", None),
+            "eval_crop_mode": getattr(task_config, "eval_crop_mode", "center"),
             "random_crop": task_config.random_crop,
+            "temporal_consistent_crop": getattr(
+                task_config, "temporal_consistent_crop", False
+            ),
             "use_group_norm": task_config.use_group_norm,
         }
-        return MultiImageObsEncoder(**kwargs)
+        encoder = MultiImageObsEncoder(**kwargs)
+        for record in encoder.crop_config_records:
+            loguru.logger.info(format_crop_config_record(record))
+        return encoder
     elif encoder_type == "dinov2_image":
         kwargs = {
             "shape_meta": task_config.shape_meta,
@@ -217,9 +233,18 @@ def get_encoder(network_config: NetworkConfig, task_config: TaskConfig):
             "keep_horizon_dims": network_config.keep_horizon_dims,
             "resize_shape": task_config.resize_shape,
             "crop_shape": task_config.crop_shape,
+            "crop_ratio": getattr(task_config, "crop_ratio", None),
+            "crop_mode": getattr(task_config, "crop_mode", None),
+            "eval_crop_mode": getattr(task_config, "eval_crop_mode", "center"),
             "random_crop": task_config.random_crop,
+            "temporal_consistent_crop": getattr(
+                task_config, "temporal_consistent_crop", False
+            ),
         }
-        return FrozenDINOv2ObsEncoder(**kwargs)
+        encoder = FrozenDINOv2ObsEncoder(**kwargs)
+        for record in encoder.crop_config_records:
+            loguru.logger.info(format_crop_config_record(record))
+        return encoder
     else:
         raise ValueError(f"Invalid encoder type: {encoder_type}")
 

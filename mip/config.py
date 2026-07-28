@@ -15,6 +15,24 @@ class LogConfig:
     save_freq: int = 10000
     eval_episodes: int = 10
     save_video: bool = False
+    gradient_diagnostic_freq: int = 1000
+    validation_freq: int = 10000
+    validation_batch_size: int = 16
+    validation_seed: int = 12345
+    validation_delta_t: float = 1.0
+
+
+@dataclass
+class EvalConfig:
+    parallel_rollout: bool = False
+    parallel_rollout_workers: int = 2
+    persistent_workers: bool = True
+    rollout_seed: int = 12345
+    episodes_per_worker: int = 2
+    worker_timeout_seconds: int = 900
+    output_path: str = "/tmp/parallel_image_rollout.json"
+    num_steps: int = 1
+
 
 
 @dataclass
@@ -50,6 +68,8 @@ class OptimizationConfig:
     freeze_encoder: bool = False
     use_future_embed_loss: bool = False
     future_embed_loss_mode: str = "direct"  # "direct" or "mip_two_step"
+    future_joint_mode: bool = False
+    future_t_two_step: float = 0.9
     future_embed_loss_weight: float = 0.01
     future_state_loss_weight: float = 0.1
     future_state_loss_mode: str = "fixed"  # "fixed" or "ratio"
@@ -78,6 +98,8 @@ class NetworkConfig:
     num_encoder_layers: int = 2  # Number of layers for MLP encoder
     # Image encoder configs
     rgb_model_name: str = "resnet18"
+    rgb_model_weights: str | None = None
+    imagenet_norm: bool = False
     use_seq: bool = True
     keep_horizon_dims: bool = True
     # Transformer specific configs
@@ -144,14 +166,19 @@ class TaskConfig:
     # Image observation settings
     rgb_model: str = "resnet18"
     resize_shape: list[int] | None = None
-    crop_shape: list[int] | None = None
+    crop_shape: list[int] | dict[str, list[int]] | None = None
+    crop_ratio: float | dict[str, float] | None = None
     random_crop: bool = True
+    crop_mode: str | None = None
+    eval_crop_mode: str = "center"
+    temporal_consistent_crop: bool = False
     use_group_norm: bool = True
     use_seq: bool = True
     libero_benchmark_name: str | None = None
     libero_task_name: str | None = None
     libero_root: str | None = None
     libero_camera_size: int = 128
+    robocasa_split: str = "target"
     future_state_enabled: bool = False
     future_state_steps: int = 1
     future_state_steps_list: list[int] = field(default_factory=list)
@@ -165,4 +192,5 @@ class Config:
     network: NetworkConfig
     task: TaskConfig
     log: LogConfig
+    eval: EvalConfig = field(default_factory=EvalConfig)
     mode: str = "train"  # "train" or "eval"

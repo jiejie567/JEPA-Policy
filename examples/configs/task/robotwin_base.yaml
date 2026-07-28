@@ -1,0 +1,61 @@
+# @package task
+defaults:
+  - _self_
+
+env_name: ???
+env_type: "robotwin"
+obs_type: "image"
+robotwin_task_name: ???
+robotwin_task_config: "demo_clean"
+robotwin_root: "/mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/third_party/robotwin"
+dataset_path: ???
+dataset_num_episodes: 50
+abs_action: false
+max_episode_steps: ???
+obs_keys:
+  - head_camera_image
+  - left_wrist_image
+  - right_wrist_image
+  - state
+obs_dim: 14
+act_dim: 14
+obs_steps: 2
+act_steps: 8
+horizon: 10
+num_envs: 1
+save_video: false
+render_obs_key: "head_camera_image"
+eval_image_size: 128
+val_dataset_percentage: 0.0
+rgb_model: "resnet18"
+resize_shape: [128, 128]
+crop_shape: [116, 116]
+crop_ratio: null
+random_crop: true
+crop_mode: "temporal_consistent"
+eval_crop_mode: "center"
+temporal_consistent_crop: true
+use_group_norm: true
+use_seq: true
+future_state_enabled: false
+future_state_steps: 4
+future_state_steps_list: []
+future_target_type: "embedding"
+use_action_history: false
+
+shape_meta:
+  action:
+    shape: [14]
+  obs:
+    head_camera_image:
+      shape: [3, 128, 128]
+      type: rgb
+    left_wrist_image:
+      shape: [3, 128, 128]
+      type: rgb
+    right_wrist_image:
+      shape: [3, 128, 128]
+      type: rgb
+    state:
+      shape: [14]
+      type: low_dim

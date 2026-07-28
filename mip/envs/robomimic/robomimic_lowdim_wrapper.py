@@ -82,6 +82,13 @@ class RobomimicLowdimWrapper(gym.Env):
     def step(self, action):
         raw_obs, reward, done, info = self.env.step(action)
         obs = np.concatenate([raw_obs[key] for key in self.obs_keys], axis=0)
+        info = dict(info or {})
+        success = self.env.is_success()
+        if not isinstance(success, dict) or "task" not in success:
+            raise RuntimeError(
+                "Robomimic environment did not return a task success predicate"
+            )
+        info["success"] = bool(success["task"])
         return obs, reward, done, info
 
     def render(self, mode="rgb_array"):

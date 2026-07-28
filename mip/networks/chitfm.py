@@ -104,11 +104,16 @@ class ChiTransformer(BaseNetwork):
         self.pos_emb = nn.Parameter(torch.zeros(1, T, d_model))
         self.drop = nn.Dropout(p_drop_emb)
         if self.n_future_tokens > 0:
-            self.future_tokens = nn.Parameter(torch.zeros(1, n_future_tokens, d_model))
+            # This parameter identifies token type only. Sample-specific future
+            # content always comes through ``future_input_emb`` (zeros in the
+            # first joint pass, noisy/predicted future in the second pass).
+            self.future_type_emb = nn.Parameter(
+                torch.zeros(1, n_future_tokens, d_model)
+            )
             self.future_input_emb = nn.Linear(self.future_out_dim, d_model)
             self.future_head = nn.Linear(d_model, self.future_out_dim)
         else:
-            self.future_tokens = None
+            self.future_type_emb = None
             self.future_input_emb = None
             self.future_head = None
 
@@ -291,21 +296,25 @@ class ChiTransformer(BaseNetwork):
         # 5. decoder - process action sequence
         token_embeddings = input_emb
         if self.n_future_tokens > 0:
-            if future_input is not None:
-                if future_input.dim() == 2:
-                    future_input = future_input.unsqueeze(1)
-                if future_input.dim() != 3:
-                    raise ValueError(
-                        f"future_input must have shape (B, D) or (B, T, D), got {tuple(future_input.shape)}"
-                    )
-                if future_input.shape[1] != self.n_future_tokens:
-                    raise ValueError(
-                        "future_input token count does not match n_future_tokens: "
-                        f"{future_input.shape[1]} vs {self.n_future_tokens}"
-                    )
-                future_tokens = self.future_input_emb(future_input)
-            else:
-                future_tokens = self.future_tokens.expand(b, -1, -1)
+            if future_input is None:
+                future_input = torch.zeros(
+                    (b, self.n_future_tokens, self.future_out_dim),
+                    device=device,
+                    dtype=x.dtype,
+                )
+            elif future_input.dim() == 2:
+                future_input = future_input.unsqueeze(1)
+            if future_input.dim() != 3:
+                raise ValueError(
+                    f"future_input must have shape (B, D) or (B, T, D), got {tuple(future_input.shape)}"
+                )
+            if future_input.shape[1] != self.n_future_tokens:
+                raise ValueError(
+                    "future_input token count does not match n_future_tokens: "
+                    f"{future_input.shape[1]} vs {self.n_future_tokens}"
+                )
+            future_tokens = self.future_input_emb(future_input)
+            future_tokens = future_tokens + self.future_type_emb
             token_embeddings = torch.cat([token_embeddings, future_tokens], dim=1)
         t = token_embeddings.shape[1]
         position_embeddings = self.pos_emb[
@@ -360,6 +369,28 @@ class ChiTransformer(BaseNetwork):
             if self.n_future_tokens == 1:
                 future_embed_pred = future_embed_pred[:, 0, :]
         return y, scalar_output, future_embed_pred
+
+    def joint_forward(
+        self,
+        action_input: torch.Tensor,
+        s: torch.Tensor,
+        t: torch.Tensor,
+        condition: torch.Tensor,
+        future_input: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Predict action and future from one shared-transformer forward."""
+        if self.n_future_tokens <= 0 or self.future_head is None:
+            raise RuntimeError("joint_forward requires n_future_tokens > 0")
+        if future_input is None:
+            raise ValueError("joint_forward requires explicit future_input content")
+        action_pred, _, future_pred = self.forward(
+            action_input,
+            s,
+            t,
+            condition,
+            future_input=future_input,
+        )
+        return action_pred, future_pred
 
     def forward_with_aux(
         self,

@@ -42,15 +42,24 @@ class Logger:
         # This uploads all config (optimization, network, task, log) to wandb
         omega_config = OmegaConf.structured(config)
 
-        wandb.init(
+        explicit_run_id = os.getenv("WANDB_RUN_ID")
+        self._wandb_run = wandb.init(
             config=OmegaConf.to_container(omega_config),
             project=config.log.project,
             entity=config.log.entity,
             group=config.log.group,
             name=config.log.exp_name,
-            id=str(uuid.uuid4()),
+            id=explicit_run_id or str(uuid.uuid4()),
+            resume="allow" if explicit_run_id else None,
             mode=config.log.wandb_mode,
             dir=self._log_dir,
+            settings=wandb.Settings(
+                # Keep stdout/stderr and system telemetry visible in W&B. The
+                # launcher still writes the same output to its local log file.
+                console="wrap",
+                disable_code=True,
+                disable_git=True,
+            ),
         )
         self._wandb = wandb
 
@@ -77,7 +86,7 @@ class Logger:
             video_env.file_path = None
 
     def log(self, d, category):
-        assert category in ["train", "eval"]
+        assert category in ["train", "eval", "val"]
         assert "step" in d
 
         # Print metrics, but skip wandb.Image objects for console output
@@ -110,7 +119,7 @@ class Logger:
             _d[category + "/" + k] = v
 
         # Log to wandb
-        self._wandb.log(_d, step=d["step"])
+        self._wandb_run.log(_d, step=d["step"])
 
     def save_agent(self, agent=None, identifier="final", training_state=None):
         if agent:
@@ -216,8 +225,11 @@ class Logger:
             self.save_agent(agent)
         except Exception as e:
             loguru.logger.error(f"Failed to save model: {e}")
-        if self._wandb:
-            self._wandb.finish()
+        if self._wandb_run:
+            try:
+                self._wandb_run.finish()
+            except Exception as e:
+                loguru.logger.error(f"Failed to finish W&B run cleanly: {e}")
 
 
 def update_best_metrics(best_metrics, current_metrics):

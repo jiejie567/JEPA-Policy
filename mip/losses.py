@@ -146,6 +146,7 @@ def mip_loss(
     obs: torch.Tensor,
     delta_t: torch.Tensor,
     future_obs: torch.Tensor | dict | None = None,
+    return_obs_emb: bool = False,
 ) -> float:
     """Two step denoising loss."""
     # sample
@@ -173,6 +174,8 @@ def mip_loss(
         "loss_action": action_loss.detach(),
         "loss_action_raw": action_loss.detach(),
     }
+    if return_obs_emb:
+        info["_obs_emb_for_reuse"] = obs_emb
 
     if future_obs is not None:
         if config.future_target_type == "state":

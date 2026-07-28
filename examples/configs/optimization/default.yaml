@@ -33,6 +33,8 @@ encoder_checkpoint_use_ema: true
 freeze_encoder: false
 use_future_embed_loss: false
 future_embed_loss_mode: "direct"
+future_joint_mode: false
+future_t_two_step: 0.9
 future_embed_loss_weight: 0.01
 future_state_loss_weight: 0.1
 future_state_loss_mode: "fixed"

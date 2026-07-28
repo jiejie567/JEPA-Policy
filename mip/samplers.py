@@ -123,6 +123,7 @@ def mip_sampler(
     encoder: BaseEncoder,
     act_0: torch.Tensor,
     obs: torch.Tensor,
+    return_future: bool = False,
 ):
     bs = act_0.shape[0]
     s = torch.zeros((bs,), device=act_0.device)
@@ -134,6 +135,7 @@ def mip_sampler(
     use_future_mip_two_step = (
         getattr(config, "use_future_embed_loss", False)
         and getattr(config, "future_embed_loss_mode", "direct") == "mip_two_step"
+        and getattr(config, "future_joint_mode", False)
         and getattr(flow_map.net, "n_future_tokens", 0) > 0
     )
 
@@ -147,23 +149,26 @@ def mip_sampler(
                 (bs, n_future_tokens, future_out_dim), device=act_0.device
             )
 
-        act_pred_0, _, future_pred_0 = flow_map.net(
+        act_pred_0, future_pred_0 = flow_map.net.joint_forward(
             act_0,
             s,
             t,
             obs_emb,
-            future_input=future_0,
+            future_0,
         )
-        act_pred_1, _, _ = flow_map.net(
+        act_pred_1, future_pred_1 = flow_map.net.joint_forward(
             act_pred_0,
             t,
             torch.ones_like(t),
             obs_emb,
-            future_input=future_pred_0,
+            future_pred_0,
         )
     else:
         act_pred_0 = flow_map.get_velocity(s, act_0, obs_emb)
         act_pred_1 = flow_map.get_velocity(t, act_pred_0, obs_emb)
+        future_pred_1 = None
 
     act = act_pred_1
+    if return_future:
+        return act, future_pred_1
     return act

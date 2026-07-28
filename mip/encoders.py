@@ -7,7 +7,7 @@ Date: 2025-10-03
 """
 
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import torch
 import torch.nn as nn
@@ -16,6 +16,163 @@ import torchvision.transforms.functional as ttf
 
 import mip.torch_utils as tu
 from mip.torch_utils import at_least_ndim
+
+
+VALID_CROP_MODES = {"none", "center", "independent", "temporal_consistent"}
+
+
+def resolve_crop_mode(
+    crop_mode: str | None,
+    crop_shape,
+    crop_ratio,
+    random_crop: bool,
+    temporal_consistent_crop: bool,
+) -> str:
+    """Resolve the authoritative crop mode while preserving legacy callers."""
+    has_crop_spec = crop_shape is not None or crop_ratio is not None
+    if crop_mode is None:
+        if not has_crop_spec:
+            return "none"
+        if temporal_consistent_crop:
+            return "temporal_consistent"
+        return "independent" if random_crop else "center"
+
+    mode = str(crop_mode).lower()
+    if mode not in VALID_CROP_MODES:
+        raise ValueError(
+            f"Unsupported crop_mode={crop_mode!r}; expected one of "
+            f"{sorted(VALID_CROP_MODES)}"
+        )
+    if mode != "none" and not has_crop_spec:
+        raise ValueError(
+            f"crop_mode={mode!r} requires crop_shape or crop_ratio"
+        )
+
+    expected_random = mode in {"independent", "temporal_consistent"}
+    expected_temporal = mode == "temporal_consistent"
+    if bool(random_crop) != expected_random:
+        raise ValueError(
+            f"crop_mode={mode!r} requires random_crop={expected_random}, "
+            f"got {random_crop}"
+        )
+    if bool(temporal_consistent_crop) != expected_temporal:
+        raise ValueError(
+            f"crop_mode={mode!r} requires "
+            f"temporal_consistent_crop={expected_temporal}, "
+            f"got {temporal_consistent_crop}"
+        )
+    return mode
+
+
+def value_for_camera(value, key: str):
+    if isinstance(value, Mapping):
+        if key not in value:
+            raise ValueError(f"Missing crop setting for RGB key {key!r}")
+        return value[key]
+    return value
+
+
+def resolve_crop_shape(
+    input_shape: tuple[int, int, int],
+    *,
+    crop_shape=None,
+    crop_ratio=None,
+    key: str,
+) -> tuple[int, int] | None:
+    """Resolve an explicit or ratio-based crop for one camera.
+
+    Explicit shapes take precedence. Ratio crops remove a symmetric margin from
+    each edge, which maps 84 -> 76 and 128 -> 116 for ``crop_ratio=0.9``.
+    """
+    if len(input_shape) != 3:
+        raise ValueError(f"Expected CHW input shape, got {input_shape}")
+    image_h, image_w = (int(input_shape[-2]), int(input_shape[-1]))
+
+    explicit_shape = value_for_camera(crop_shape, key)
+    if explicit_shape is not None:
+        if len(explicit_shape) != 2:
+            raise ValueError(
+                f"crop_shape for {key!r} must contain [height, width], "
+                f"got {explicit_shape}"
+            )
+        crop_h, crop_w = (int(explicit_shape[0]), int(explicit_shape[1]))
+    else:
+        ratio_value = value_for_camera(crop_ratio, key)
+        if ratio_value is None:
+            return None
+        ratio = float(ratio_value)
+        if not 0.0 < ratio < 1.0:
+            raise ValueError(
+                f"crop_ratio for {key!r} must be between 0 and 1, got {ratio}"
+            )
+        margin_h = max(1, round(image_h * (1.0 - ratio) / 2.0))
+        margin_w = max(1, round(image_w * (1.0 - ratio) / 2.0))
+        crop_h = image_h - 2 * margin_h
+        crop_w = image_w - 2 * margin_w
+
+    if crop_h <= 0 or crop_w <= 0:
+        raise ValueError(
+            f"Resolved non-positive crop for {key!r}: ({crop_h}, {crop_w})"
+        )
+    if crop_h > image_h or crop_w > image_w:
+        raise ValueError(
+            f"Crop for {key!r} exceeds input: input=({image_h}, {image_w}), "
+            f"crop=({crop_h}, {crop_w})"
+        )
+    return crop_h, crop_w
+
+
+def make_crop_config_record(
+    *,
+    key: str,
+    source_shape: tuple[int, int, int],
+    input_shape: tuple[int, int, int],
+    output_shape: tuple[int, int],
+    crop_mode: str,
+    eval_crop_mode: str,
+) -> dict:
+    input_h, input_w = input_shape[-2:]
+    output_h, output_w = output_shape
+    max_top = input_h - output_h
+    max_left = input_w - output_w
+    active = crop_mode != "none"
+    return {
+        "camera": key,
+        "source_hw": tuple(source_shape[-2:]),
+        "input_hw": (input_h, input_w),
+        "output_hw": (output_h, output_w),
+        "retained_hw": (output_h / input_h, output_w / input_w),
+        "train_mode": crop_mode,
+        "eval_mode": eval_crop_mode if active else "none",
+        "train_offsets": (
+            ((0, max_top), (0, max_left))
+            if crop_mode in {"independent", "temporal_consistent"}
+            else None
+        ),
+        "eval_offset": ((max_top // 2, max_left // 2) if active else None),
+    }
+
+
+def format_crop_config_record(record: dict) -> str:
+    """Format a resolved per-camera crop record for startup logs."""
+    source_h, source_w = record["source_hw"]
+    input_h, input_w = record["input_hw"]
+    output_h, output_w = record["output_hw"]
+    retained_h, retained_w = record["retained_hw"]
+    message = (
+        f"Crop config: camera={record['camera']} source={source_h}x{source_w} "
+        f"input={input_h}x{input_w} output={output_h}x{output_w} "
+        f"retained={retained_h:.3%}x{retained_w:.3%} "
+        f"train={record['train_mode']} eval={record['eval_mode']}"
+    )
+    if record["train_offsets"] is not None:
+        (top_min, top_max), (left_min, left_max) = record["train_offsets"]
+        message += (
+            f" train_offsets=top[{top_min},{top_max}],left[{left_min},{left_max}]"
+        )
+    if record["eval_offset"] is not None:
+        message += f" eval_offset={record['eval_offset']}"
+    return message
 
 
 def get_mask(
@@ -151,6 +308,91 @@ class CropRandomizer(nn.Module):
     def forward(self, inputs):
         return self.forward_in(inputs)
 
+    def forward_temporally_consistent(
+        self,
+        inputs: torch.Tensor,
+        crop_indices: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Crop every frame of a sample with one shared spatial window.
+
+        Args:
+            inputs: ``(B, T, C, H, W)`` or ``(B, C, H, W)`` images.
+            crop_indices: Optional ``(B, 2)`` tensor of ``(top, left)``
+                coordinates. Supplying coordinates never consumes RNG.
+
+        Returns:
+            The cropped images with the same rank as ``inputs`` and the
+            per-sample ``(B, 2)`` crop coordinates. Different callers can
+            reuse the returned coordinates for additional frames from the
+            same camera.
+        """
+        if self.num_crops != 1:
+            raise ValueError(
+                "Temporal-consistent crop currently requires num_crops=1"
+            )
+        if inputs.dim() not in (4, 5):
+            raise ValueError(
+                "Temporal-consistent crop expects BCHW or BTCHW input, "
+                f"got {tuple(inputs.shape)}"
+            )
+
+        squeeze_time = inputs.dim() == 4
+        sequence = inputs.unsqueeze(1) if squeeze_time else inputs
+        batch_size, time_steps = sequence.shape[:2]
+        image_h, image_w = sequence.shape[-2:]
+        max_sample_h = image_h - self.crop_height
+        max_sample_w = image_w - self.crop_width
+        if max_sample_h <= 0 or max_sample_w <= 0:
+            raise ValueError(
+                "Crop must be smaller than its input: "
+                f"input=({image_h}, {image_w}), "
+                f"crop=({self.crop_height}, {self.crop_width})"
+            )
+
+        if crop_indices is None:
+            if self.training:
+                crop_indices = sample_crop_indices(
+                    sequence[:, 0],
+                    crop_height=self.crop_height,
+                    crop_width=self.crop_width,
+                    num_crops=1,
+                )[:, 0]
+            else:
+                # Center crop is deterministic and deliberately avoids RNG.
+                crop_h = torch.full(
+                    (batch_size,),
+                    max_sample_h // 2,
+                    device=sequence.device,
+                    dtype=torch.long,
+                )
+                crop_w = torch.full(
+                    (batch_size,),
+                    max_sample_w // 2,
+                    device=sequence.device,
+                    dtype=torch.long,
+                )
+                crop_indices = torch.stack((crop_h, crop_w), dim=-1)
+        else:
+            crop_indices = crop_indices.to(device=sequence.device, dtype=torch.long)
+            if crop_indices.shape != (batch_size, 2):
+                raise ValueError(
+                    "crop_indices must have shape (B, 2), "
+                    f"got {tuple(crop_indices.shape)} for batch {batch_size}"
+                )
+
+        temporal_indices = crop_indices[:, None, :].expand(
+            batch_size, time_steps, 2
+        )
+        cropped = crop_image_from_indices(
+            images=sequence,
+            crop_indices=temporal_indices,
+            crop_height=self.crop_height,
+            crop_width=self.crop_width,
+        )
+        if squeeze_time:
+            cropped = cropped[:, 0]
+        return cropped, crop_indices
+
     def __repr__(self):
         """Pretty print network."""
         header = f"{str(self.__class__.__name__)}"
@@ -174,7 +416,7 @@ def crop_image_from_indices(images, crop_indices, crop_height, crop_width):
             the indices can also be of shape [..., 2] if only 1 crop should
             be taken per image. Leading dimensions must be consistent with
             @images argument. Each index specifies the top left of the crop.
-            Values must be in range [0, H - CH - 1] x [0, W - CW - 1] where
+            Values must be in range [0, H - CH] x [0, W - CW] where
             H and W are the height and width of @images and CH and CW are
             @crop_height and @crop_width.
 
@@ -208,9 +450,9 @@ def crop_image_from_indices(images, crop_indices, crop_height, crop_width):
 
     # make sure @crop_indices are in valid range
     assert (crop_indices[..., 0] >= 0).all().item()
-    assert (crop_indices[..., 0] < (image_h - crop_height)).all().item()
+    assert (crop_indices[..., 0] <= (image_h - crop_height)).all().item()
     assert (crop_indices[..., 1] >= 0).all().item()
-    assert (crop_indices[..., 1] < (image_w - crop_width)).all().item()
+    assert (crop_indices[..., 1] <= (image_w - crop_width)).all().item()
 
     # convert each crop index (ch, cw) into a list of pixel indices that correspond to the entire window.
 
@@ -265,6 +507,30 @@ def crop_image_from_indices(images, crop_indices, crop_height, crop_width):
     return crops
 
 
+def sample_crop_indices(images, crop_height, crop_width, num_crops):
+    """Uniformly sample every valid top-left crop coordinate, inclusively."""
+    image_h, image_w = images.shape[-2:]
+    max_sample_h = image_h - crop_height
+    max_sample_w = image_w - crop_width
+    if max_sample_h < 0 or max_sample_w < 0:
+        raise ValueError(
+            f"Crop exceeds input: input=({image_h}, {image_w}), "
+            f"crop=({crop_height}, {crop_width})"
+        )
+    sample_shape = (*images.shape[:-3], num_crops)
+    crop_inds_h = torch.randint(
+        max_sample_h + 1,
+        sample_shape,
+        device=images.device,
+    )
+    crop_inds_w = torch.randint(
+        max_sample_w + 1,
+        sample_shape,
+        device=images.device,
+    )
+    return torch.stack((crop_inds_h, crop_inds_w), dim=-1)
+
+
 def sample_random_image_crops(
     images, crop_height, crop_width, num_crops, pos_enc=False
 ):
@@ -311,26 +577,16 @@ def sample_random_image_crops(
         # concat across channel dimension with input
         source_im = torch.cat((source_im, position_enc), dim=-3)
 
-    # make sure sample boundaries ensure crops are fully within the images
-    image_c, image_h, image_w = source_im.shape[-3:]
-    max_sample_h = image_h - crop_height
-    max_sample_w = image_w - crop_width
-
     # Sample crop locations for all tensor dimensions up to the last 3, which are [C, H, W].
     # Each gets @num_crops samples - typically this will just be the batch dimension (B), so
     # we will sample [B, N] indices, but this supports having more than one leading dimension,
     # or possibly no leading dimension.
-    #
-    # Trick: sample in [0, 1) with rand, then re-scale to [0, M) and convert to long to get sampled ints
-    crop_inds_h = (
-        max_sample_h * torch.rand(*source_im.shape[:-3], num_crops).to(device)
-    ).long()
-    crop_inds_w = (
-        max_sample_w * torch.rand(*source_im.shape[:-3], num_crops).to(device)
-    ).long()
-    crop_inds = torch.cat(
-        (crop_inds_h.unsqueeze(-1), crop_inds_w.unsqueeze(-1)), dim=-1
-    )  # shape [..., N, 2]
+    crop_inds = sample_crop_indices(
+        source_im,
+        crop_height=crop_height,
+        crop_width=crop_width,
+        num_crops=num_crops,
+    )
 
     crops = crop_image_from_indices(
         images=source_im,
@@ -551,12 +807,54 @@ def replace_submodules(
     return root_module
 
 
+class ImageNetNormalizer(nn.Module):
+    """Map robomimic RGB from [-1, 1] to ImageNet-normalized NCHW."""
+
+    def __init__(self):
+        super().__init__()
+        self.register_buffer(
+            "mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        )
+        self.register_buffer(
+            "std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 4 or x.shape[1] != 3:
+            raise ValueError(
+                "ImageNet normalization expects NCHW RGB input, "
+                f"got shape {tuple(x.shape)}"
+            )
+        x = (x + 1.0) / 2.0
+        mean = self.mean.to(device=x.device, dtype=x.dtype)
+        std = self.std.to(device=x.device, dtype=x.dtype)
+        return (x - mean) / std
+
+
+def resolve_resnet_weights(name: str, weights: str | None):
+    if weights is None or str(weights).lower() in {"none", "null"}:
+        return None
+    if weights != "IMAGENET1K_V1":
+        raise ValueError(
+            f"Unsupported weights {weights!r} for {name}; expected null or IMAGENET1K_V1"
+        )
+    weights_enum = {
+        "resnet18": torchvision.models.ResNet18_Weights,
+        "resnet50": torchvision.models.ResNet50_Weights,
+    }.get(name)
+    if weights_enum is None:
+        raise ValueError(
+            f"IMAGENET1K_V1 is only supported for resnet18/resnet50, got {name!r}"
+        )
+    return weights_enum.IMAGENET1K_V1
+
+
 def get_resnet(name, weights=None, **kwargs):
     """name: resnet18, resnet34, resnet50
-    weights: "IMAGENET1K_V1", "r3m".
+    weights: None or "IMAGENET1K_V1".
     """
     func = getattr(torchvision.models, name)
-    resnet = func(weights=weights, **kwargs)
+    resnet = func(weights=resolve_resnet_weights(name, weights), **kwargs)
     resnet.fc = torch.nn.Identity()
     return resnet
 
@@ -577,10 +875,15 @@ class MultiImageObsEncoder(BaseEncoder):
         self,
         shape_meta: dict,
         rgb_model_name: str,
+        rgb_model_weights: str | None = None,
         emb_dim: int = 256,
         resize_shape: tuple[int, int] | dict[str, tuple] | None = None,
         crop_shape: tuple[int, int] | dict[str, tuple] | None = None,
+        crop_ratio: float | dict[str, float] | None = None,
+        crop_mode: str | None = None,
+        eval_crop_mode: str = "center",
         random_crop: bool = True,
+        temporal_consistent_crop: bool = False,
         # replace BatchNorm with GroupNorm
         use_group_norm: bool = False,
         # use single rgb model for all rgb inputs
@@ -599,10 +902,25 @@ class MultiImageObsEncoder(BaseEncoder):
         key_model_map = nn.ModuleDict()
         key_transform_map = nn.ModuleDict()
         key_shape_map = {}
+        crop_config_records = []
+
+        resolved_crop_mode = resolve_crop_mode(
+            crop_mode,
+            crop_shape,
+            crop_ratio,
+            random_crop,
+            temporal_consistent_crop,
+        )
+        eval_crop_mode = str(eval_crop_mode).lower()
+        if eval_crop_mode != "center":
+            raise ValueError(
+                "Only deterministic eval_crop_mode='center' is supported, "
+                f"got {eval_crop_mode!r}"
+            )
 
         # rgb_model
         if "resnet" in rgb_model_name:
-            rgb_model = get_resnet(rgb_model_name)
+            rgb_model = get_resnet(rgb_model_name, weights=rgb_model_weights)
         else:
             raise ValueError("Fatal rgb_model")
 
@@ -646,21 +964,31 @@ class MultiImageObsEncoder(BaseEncoder):
                 input_shape = shape
                 this_resizer = nn.Identity()
                 if resize_shape is not None:
-                    if isinstance(resize_shape, dict):
-                        h, w = resize_shape[key]
-                    else:
-                        h, w = resize_shape
+                    h, w = value_for_camera(resize_shape, key)
                     this_resizer = torchvision.transforms.Resize(size=(h, w))
                     input_shape = (shape[0], h, w)
 
-                # configure randomizer
+                # Resolve the crop after resize so ratios always describe the
+                # actual tensor entering the crop transform.
                 this_randomizer = nn.Identity()
-                if crop_shape is not None:
-                    if isinstance(crop_shape, dict):
-                        h, w = crop_shape[key]
-                    else:
-                        h, w = crop_shape
-                    if random_crop:
+                resolved_crop_shape = None
+                if resolved_crop_mode != "none":
+                    resolved_crop_shape = resolve_crop_shape(
+                        input_shape,
+                        crop_shape=crop_shape,
+                        crop_ratio=crop_ratio,
+                        key=key,
+                    )
+                    h, w = resolved_crop_shape
+                    if resolved_crop_mode in {
+                        "independent",
+                        "temporal_consistent",
+                    }:
+                        if h >= input_shape[-2] or w >= input_shape[-1]:
+                            raise ValueError(
+                                "Random crop must be smaller than its input for "
+                                f"{key!r}: input={input_shape[-2:]}, crop={(h, w)}"
+                            )
                         this_randomizer = CropRandomizer(
                             input_shape=input_shape,
                             crop_height=h,
@@ -670,12 +998,25 @@ class MultiImageObsEncoder(BaseEncoder):
                         )
                     else:
                         this_randomizer = torchvision.transforms.CenterCrop(size=(h, w))
+                output_shape = (
+                    resolved_crop_shape
+                    if resolved_crop_shape is not None
+                    else tuple(input_shape[-2:])
+                )
+                crop_config_records.append(
+                    make_crop_config_record(
+                        key=key,
+                        source_shape=shape,
+                        input_shape=input_shape,
+                        output_shape=output_shape,
+                        crop_mode=resolved_crop_mode,
+                        eval_crop_mode=eval_crop_mode,
+                    )
+                )
                 # configure normalizer
                 this_normalizer = nn.Identity()
                 if imagenet_norm:
-                    this_normalizer = torchvision.transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    )
+                    this_normalizer = ImageNetNormalizer()
 
                 this_transform = nn.Sequential(
                     this_resizer, this_randomizer, this_normalizer
@@ -695,6 +1036,18 @@ class MultiImageObsEncoder(BaseEncoder):
         self.rgb_keys = rgb_keys
         self.low_dim_keys = low_dim_keys
         self.key_shape_map = key_shape_map
+        self.crop_mode = resolved_crop_mode
+        self.crop_ratio = crop_ratio
+        self.eval_crop_mode = eval_crop_mode
+        self.random_crop = resolved_crop_mode in {
+            "independent",
+            "temporal_consistent",
+        }
+        self.temporal_consistent_crop = (
+            resolved_crop_mode == "temporal_consistent"
+        )
+        self.crop_config_records = crop_config_records
+        self._last_crop_params: dict[str, torch.Tensor] = {}
 
         self.use_seq = use_seq
         self.keep_horizon_dims = keep_horizon_dims
@@ -704,9 +1057,129 @@ class MultiImageObsEncoder(BaseEncoder):
             nn.Linear(emb_dim, emb_dim),
         )
 
-    def multi_image_forward(self, obs_dict):
+    def _apply_temporal_rgb_transform(
+        self,
+        key: str,
+        images: torch.Tensor,
+        crop_indices: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply resize/crop/normalization while preserving the time axis."""
+        if images.dim() not in (4, 5):
+            raise ValueError(
+                f"RGB key {key} must be BCHW or BTCHW, got {tuple(images.shape)}"
+            )
+        squeeze_time = images.dim() == 4
+        sequence = images.unsqueeze(1) if squeeze_time else images
+        batch_size, time_steps, channels = sequence.shape[:3]
+
+        # key_transform_map is built as resize -> crop -> normalize. Apply the
+        # rank-sensitive transforms to a flattened copy, but sample the crop on
+        # BTCHW so one coordinate is shared across all T frames.
+        resizer, randomizer, normalizer = self.key_transform_map[key]
+        flat = sequence.reshape(
+            batch_size * time_steps, channels, *sequence.shape[-2:]
+        )
+        flat = resizer(flat)
+        sequence = flat.reshape(
+            batch_size, time_steps, channels, *flat.shape[-2:]
+        )
+        if not isinstance(randomizer, CropRandomizer):
+            raise RuntimeError(
+                "Temporal-consistent crop requires CropRandomizer, "
+                f"got {type(randomizer).__name__} for key {key}"
+            )
+        sequence, crop_indices = randomizer.forward_temporally_consistent(
+            sequence, crop_indices=crop_indices
+        )
+        flat = sequence.reshape(
+            batch_size * time_steps, channels, *sequence.shape[-2:]
+        )
+        flat = normalizer(flat)
+        sequence = flat.reshape(
+            batch_size, time_steps, channels, *flat.shape[-2:]
+        )
+        if squeeze_time:
+            sequence = sequence[:, 0]
+        return sequence, crop_indices
+
+    def prepare_temporally_consistent_crops(
+        self,
+        obs_dict: dict[str, torch.Tensor],
+        future_obs_dict: dict[str, torch.Tensor] | None = None,
+    ) -> tuple[
+        dict[str, torch.Tensor],
+        dict[str, torch.Tensor] | None,
+        dict[str, torch.Tensor],
+    ]:
+        """Prepare current and future RGB frames using one crop per camera.
+
+        Current frames and all future frames are concatenated along time before
+        cropping. Consequently the future target path cannot independently
+        resample a spatial window.
+        """
+        if not self.temporal_consistent_crop:
+            raise RuntimeError(
+                "prepare_temporally_consistent_crops requires "
+                "temporal_consistent_crop=true"
+            )
+
+        prepared_obs = dict(obs_dict)
+        prepared_future = (
+            None if future_obs_dict is None else dict(future_obs_dict)
+        )
+        crop_params: dict[str, torch.Tensor] = {}
+
+        for key in self.rgb_keys:
+            obs_images = obs_dict[key]
+            if obs_images.dim() != 5:
+                raise ValueError(
+                    "Temporal policy observations must be BTCHW, "
+                    f"got {tuple(obs_images.shape)} for key {key}"
+                )
+            obs_steps = obs_images.shape[1]
+            combined = obs_images
+            future_was_sequence = False
+            if future_obs_dict is not None:
+                future_images = future_obs_dict[key]
+                if future_images.dim() == 4:
+                    future_sequence = future_images.unsqueeze(1)
+                elif future_images.dim() == 5:
+                    future_sequence = future_images
+                    future_was_sequence = True
+                else:
+                    raise ValueError(
+                        "Future RGB observations must be BCHW or BTCHW, "
+                        f"got {tuple(future_images.shape)} for key {key}"
+                    )
+                combined = torch.cat((obs_images, future_sequence), dim=1)
+
+            prepared, indices = self._apply_temporal_rgb_transform(key, combined)
+            prepared_obs[key] = prepared[:, :obs_steps]
+            if prepared_future is not None:
+                future_part = prepared[:, obs_steps:]
+                prepared_future[key] = (
+                    future_part if future_was_sequence else future_part[:, 0]
+                )
+            crop_params[key] = indices
+
+        self._last_crop_params = {
+            key: value.detach().cpu().clone() for key, value in crop_params.items()
+        }
+        return prepared_obs, prepared_future, crop_params
+
+    @property
+    def last_crop_params(self) -> dict[str, torch.Tensor]:
+        """Most recent per-camera ``(top, left)`` values, for diagnostics."""
+        return {key: value.clone() for key, value in self._last_crop_params.items()}
+
+    def multi_image_forward(self, obs_dict, rgb_pretransformed: bool = False):
         batch_size = None
         features = []
+
+        obs_dict = dict(obs_dict)
+        if self.temporal_consistent_crop and not rgb_pretransformed:
+            obs_dict, _, _ = self.prepare_temporally_consistent_crops(obs_dict)
+            rgb_pretransformed = True
 
         if self.use_seq:
             # input: (bs, horizon, c, h, w)
@@ -723,8 +1196,9 @@ class MultiImageObsEncoder(BaseEncoder):
                     batch_size = img.shape[0]
                 else:
                     assert batch_size == img.shape[0]
-                assert img.shape[1:] == self.key_shape_map[key]
-                img = self.key_transform_map[key](img)
+                if not rgb_pretransformed:
+                    assert img.shape[1:] == self.key_shape_map[key]
+                    img = self.key_transform_map[key](img)
                 imgs.append(img)
             # (N*B,C,H,W)
             imgs = torch.cat(imgs, dim=0)
@@ -745,8 +1219,9 @@ class MultiImageObsEncoder(BaseEncoder):
                     batch_size = img.shape[0]
                 else:
                     assert batch_size == img.shape[0]
-                assert img.shape[1:] == self.key_shape_map[key]
-                img = self.key_transform_map[key](img)
+                if not rgb_pretransformed:
+                    assert img.shape[1:] == self.key_shape_map[key]
+                    img = self.key_transform_map[key](img)
                 feature = self.key_model_map[key](img)
                 features.append(feature)
 
@@ -764,13 +1239,32 @@ class MultiImageObsEncoder(BaseEncoder):
         features = torch.cat(features, dim=-1)
         return features
 
-    def encode_rgb_features(self, obs_dict):
+    def encode_rgb_features(self, obs_dict, rgb_pretransformed: bool = False):
         """Encode only RGB observations with the vision backbone.
 
         This is used for RGB-only future targets. Low-dimensional observations
         are intentionally ignored here, while the normal forward path still
         fuses RGB and low-dimensional inputs for policy conditioning.
         """
+        if self.temporal_consistent_crop and not rgb_pretransformed:
+            # This path is used when there is no paired current observation.
+            # Joint future training uses encode_obs_and_future_rgb below so the
+            # future target never reaches this independent-crop fallback.
+            temporal_obs = {}
+            for key in self.rgb_keys:
+                value = obs_dict[key]
+                temporal_obs[key] = value if value.dim() == 5 else value.unsqueeze(1)
+            temporal_obs, _, _ = self.prepare_temporally_consistent_crops(temporal_obs)
+            obs_dict = {
+                key: (
+                    temporal_obs[key]
+                    if obs_dict[key].dim() == 5
+                    else temporal_obs[key][:, 0]
+                )
+                for key in self.rgb_keys
+            }
+            rgb_pretransformed = True
+
         features = []
 
         for key in self.rgb_keys:
@@ -778,12 +1272,14 @@ class MultiImageObsEncoder(BaseEncoder):
             if img.dim() == 5:
                 b, t, c, h, w = img.shape
                 img = img.reshape(b * t, c, h, w)
-                img = self.key_transform_map[key](img)
+                if not rgb_pretransformed:
+                    img = self.key_transform_map[key](img)
                 model_key = "rgb" if self.share_rgb_model else key
                 feature = self.key_model_map[model_key](img)
                 feature = feature.reshape(b, t, -1)
             elif img.dim() == 4:
-                img = self.key_transform_map[key](img)
+                if not rgb_pretransformed:
+                    img = self.key_transform_map[key](img)
                 model_key = "rgb" if self.share_rgb_model else key
                 feature = self.key_model_map[model_key](img)
             else:
@@ -797,9 +1293,11 @@ class MultiImageObsEncoder(BaseEncoder):
 
         return torch.cat(features, dim=-1)
 
-    def forward(self, obs_dict, mask=None):
+    def _forward_impl(self, obs_dict, mask=None, rgb_pretransformed: bool = False):
         ori_batch_size, ori_seq_len = self.get_batch_size(obs_dict)
-        features = self.multi_image_forward(obs_dict)
+        features = self.multi_image_forward(
+            obs_dict, rgb_pretransformed=rgb_pretransformed
+        )
         # linear embedding
         result = self.mlp(features)
         if self.use_seq:
@@ -809,8 +1307,35 @@ class MultiImageObsEncoder(BaseEncoder):
                 result = result.reshape(ori_batch_size, -1)
         return result
 
+    def forward(self, obs_dict, mask=None):
+        return self._forward_impl(obs_dict, mask=mask, rgb_pretransformed=False)
+
+    def encode_obs_and_future_rgb(
+        self,
+        obs_dict: dict[str, torch.Tensor],
+        future_obs_dict: dict[str, torch.Tensor],
+        mask=None,
+    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+        """Encode paired current/future observations after one shared crop."""
+        if not self.temporal_consistent_crop:
+            raise RuntimeError(
+                "encode_obs_and_future_rgb requires temporal_consistent_crop=true"
+            )
+        prepared_obs, prepared_future, crop_params = (
+            self.prepare_temporally_consistent_crops(obs_dict, future_obs_dict)
+        )
+        obs_embedding = self._forward_impl(
+            prepared_obs, mask=mask, rgb_pretransformed=True
+        )
+        future_embedding = self.encode_rgb_features(
+            prepared_future, rgb_pretransformed=True
+        )
+        return obs_embedding, future_embedding, crop_params
+
     @torch.no_grad()
     def output_shape(self):
+        was_training = self.training
+        self.eval()
         example_obs_dict = {}
         obs_shape_meta = self.shape_meta["obs"]
         batch_size = 1
@@ -819,12 +1344,17 @@ class MultiImageObsEncoder(BaseEncoder):
             prefix = (batch_size, 1) if self.use_seq else (batch_size,)
             this_obs = torch.zeros(prefix + shape, dtype=self.dtype, device=self.device)
             example_obs_dict[key] = this_obs
-        example_output = self.multi_image_forward(example_obs_dict)
-        output_shape = example_output.shape[1:]
-        return output_shape[0]
+        try:
+            example_output = self.multi_image_forward(example_obs_dict)
+            output_shape = example_output.shape[1:]
+            return output_shape[0]
+        finally:
+            self.train(was_training)
 
     @torch.no_grad()
     def rgb_feature_dim(self):
+        was_training = self.training
+        self.eval()
         example_obs_dict = {}
         batch_size = 1
         for key in self.rgb_keys:
@@ -835,8 +1365,11 @@ class MultiImageObsEncoder(BaseEncoder):
                 device=self.device,
             )
             example_obs_dict[key] = this_obs
-        example_output = self.encode_rgb_features(example_obs_dict)
-        return example_output.shape[-1]
+        try:
+            example_output = self.encode_rgb_features(example_obs_dict)
+            return example_output.shape[-1]
+        finally:
+            self.train(was_training)
 
     def get_batch_size(self, obs_dict):
         any_key = next(iter(obs_dict))

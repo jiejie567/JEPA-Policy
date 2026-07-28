@@ -13,7 +13,7 @@ max_episode_steps: 600
 horizon: 16
 act_dim: 7
 obs_dim: 384
-render_obs_key: "agentview_image"
+render_obs_key: "agentview_rgb"
 num_envs: 2
 
 shape_meta:

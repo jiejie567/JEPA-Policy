@@ -23,7 +23,11 @@ act_dim: 10
 
 resize_shape: null
 crop_shape: [84, 84]
+crop_ratio: null
 random_crop: false
+crop_mode: center
+eval_crop_mode: center
+temporal_consistent_crop: false
 use_group_norm: true
 use_seq: true
 

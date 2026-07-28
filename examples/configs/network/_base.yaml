@@ -10,5 +10,7 @@ emb_dim: -1
 
 # Image encoder configs (used when obs_type is "image")
 rgb_model_name: "resnet18"
+rgb_model_weights: null
+imagenet_norm: false
 use_seq: true
 keep_horizon_dims: true

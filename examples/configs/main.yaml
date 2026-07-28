@@ -1,5 +1,6 @@
 defaults:
   - log: default
+  - eval: default
   - optimization: default
   - network: mlp
   - task: lift_ph_state

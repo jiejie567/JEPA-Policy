@@ -5,7 +5,14 @@ import torch
 import torch.nn as nn
 import torchvision
 
-from mip.encoders import BaseEncoder, CropRandomizer
+from mip.encoders import (
+    BaseEncoder,
+    CropRandomizer,
+    make_crop_config_record,
+    resolve_crop_mode,
+    resolve_crop_shape,
+    value_for_camera,
+)
 
 
 class FrozenDINOv2Backbone(nn.Module):
@@ -37,7 +44,11 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
         emb_dim: int = 256,
         resize_shape=None,
         crop_shape=None,
+        crop_ratio=None,
+        crop_mode: str | None = None,
+        eval_crop_mode: str = "center",
         random_crop: bool = True,
+        temporal_consistent_crop: bool = False,
         use_seq: bool = False,
         keep_horizon_dims: bool = False,
     ):
@@ -46,6 +57,26 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
         low_dim_keys = []
         key_transform_map = nn.ModuleDict()
         key_shape_map = {}
+        crop_config_records = []
+
+        resolved_crop_mode = resolve_crop_mode(
+            crop_mode,
+            crop_shape,
+            crop_ratio,
+            random_crop,
+            temporal_consistent_crop,
+        )
+        if resolved_crop_mode == "temporal_consistent":
+            raise ValueError(
+                "DINOv2 encoder does not support temporal_consistent crop; "
+                "use an explicit center/independent mode or no crop"
+            )
+        eval_crop_mode = str(eval_crop_mode).lower()
+        if eval_crop_mode != "center":
+            raise ValueError(
+                "Only deterministic eval_crop_mode='center' is supported, "
+                f"got {eval_crop_mode!r}"
+            )
 
         obs_shape_meta = shape_meta["obs"]
         for key, attr in obs_shape_meta.items():
@@ -59,20 +90,26 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
                 input_shape = shape
                 this_resizer = nn.Identity()
                 if resize_shape is not None:
-                    if isinstance(resize_shape, dict):
-                        h, w = resize_shape[key]
-                    else:
-                        h, w = resize_shape
+                    h, w = value_for_camera(resize_shape, key)
                     this_resizer = torchvision.transforms.Resize(size=(h, w))
                     input_shape = (shape[0], h, w)
 
                 this_randomizer = nn.Identity()
-                if crop_shape is not None:
-                    if isinstance(crop_shape, dict):
-                        h, w = crop_shape[key]
-                    else:
-                        h, w = crop_shape
-                    if random_crop:
+                resolved_crop_shape = None
+                if resolved_crop_mode != "none":
+                    resolved_crop_shape = resolve_crop_shape(
+                        input_shape,
+                        crop_shape=crop_shape,
+                        crop_ratio=crop_ratio,
+                        key=key,
+                    )
+                    h, w = resolved_crop_shape
+                    if resolved_crop_mode == "independent":
+                        if h >= input_shape[-2] or w >= input_shape[-1]:
+                            raise ValueError(
+                                "Random crop must be smaller than its input for "
+                                f"{key!r}: input={input_shape[-2:]}, crop={(h, w)}"
+                            )
                         this_randomizer = CropRandomizer(
                             input_shape=input_shape,
                             crop_height=h,
@@ -82,6 +119,21 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
                         )
                     else:
                         this_randomizer = torchvision.transforms.CenterCrop(size=(h, w))
+                output_shape = (
+                    resolved_crop_shape
+                    if resolved_crop_shape is not None
+                    else tuple(input_shape[-2:])
+                )
+                crop_config_records.append(
+                    make_crop_config_record(
+                        key=key,
+                        source_shape=shape,
+                        input_shape=input_shape,
+                        output_shape=output_shape,
+                        crop_mode=resolved_crop_mode,
+                        eval_crop_mode=eval_crop_mode,
+                    )
+                )
 
                 # DINOv2 expects ImageNet normalization
                 this_normalizer = torchvision.transforms.Normalize(
@@ -104,6 +156,10 @@ class FrozenDINOv2ObsEncoder(BaseEncoder):
         self.shape_meta = shape_meta
         self.use_seq = use_seq
         self.keep_horizon_dims = keep_horizon_dims
+        self.crop_mode = resolved_crop_mode
+        self.crop_ratio = crop_ratio
+        self.eval_crop_mode = eval_crop_mode
+        self.crop_config_records = crop_config_records
 
         self.rgb_backbone = FrozenDINOv2Backbone(model_name=dino_model_name)
 

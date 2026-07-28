@@ -70,6 +70,7 @@ __pycache__/
 # Datasets / artifacts
 data/
 datasets/
+diagnostic_results/
 *.h5
 *.hdf5
 *.zarr
@@ -87,6 +88,7 @@ datasets/
 # Build / env
 dist/
 build/
+third_party/
 *.egg-info/
 .venv/
 venv/

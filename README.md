@@ -15,3 +15,8 @@ uv sync
 ```
 uv run examples/train_robomimic.py
 ```
+
+On the datanas training host, robomimic and LIBERO use incompatible simulator
+dependencies. Use `tools/run_robomimic_train.sh` for robomimic tasks and
+`tools/run_libero_train.sh` for LIBERO tasks. See
+[`docs/environment_isolation.md`](docs/environment_isolation.md).

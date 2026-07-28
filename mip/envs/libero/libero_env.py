@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 
@@ -10,6 +11,10 @@ import numpy as np
 from gymnasium import spaces
 
 from mip.config import TaskConfig
+from mip.envs.egl_device import (
+    configured_egl_device_id,
+    install_robosuite_egl_device_override,
+)
 from mip.env_utils import MultiStepWrapper
 from mip.libero_utils import (
     get_libero_import_paths,
@@ -166,6 +171,12 @@ def _load_init_states(task_config: TaskConfig, spec) -> np.ndarray:
 
 
 def _build_env(task_config: TaskConfig):
+    install_robosuite_egl_device_override()
+    libero_root = getattr(task_config, "libero_root", None)
+    if libero_root:
+        os.environ.setdefault(
+            "LIBERO_CONFIG_PATH", str(Path(libero_root).expanduser() / ".libero_config")
+        )
     try:
         try:
             from libero.libero.envs import OffScreenRenderEnv
@@ -194,10 +205,15 @@ def _build_env(task_config: TaskConfig):
     bddl_dir = resolve_libero_asset_dir(task_config, "bddl_files")
     bddl_path = Path(bddl_dir) / spec.benchmark_name / spec.bddl_file
     camera_size = getattr(task_config, "libero_camera_size", 128)
+    egl_device_id = configured_egl_device_id()
+    render_kwargs = (
+        {} if egl_device_id is None else {"render_gpu_device_id": egl_device_id}
+    )
     return OffScreenRenderEnv(
         bddl_file_name=str(bddl_path),
         camera_heights=camera_size,
         camera_widths=camera_size,
+        **render_kwargs,
     )
 
 

@@ -1,0 +1,37 @@
+# Isolated RoboTwin 2.0 runtime for the Python 3.12 DLC/PPU image.
+#
+# RoboTwin upstream recommends Python 3.10 and torch 2.4.1. This workspace's
+# accelerator runtime is Python 3.12-only, so simulator packages use their
+# Python 3.12-compatible releases while torch/torchvision are supplied by the
+# separately verified jepa_ppu overlay (see tools/run_robotwin_python.sh).
+numpy==1.26.4
+scipy==1.15.3
+sapien==3.0.0b1
+mplib==0.2.1
+gymnasium==0.29.1
+trimesh==4.4.3
+open3d==0.19.0
+transforms3d==0.4.2
+toppra==0.6.3
+imageio==2.34.2
+imageio-ffmpeg==0.6.0
+opencv-python-headless==4.11.0.86
+opencv-python==4.11.0.86
+Pillow==11.3.0
+PyYAML==6.0.2
+h5py==3.16.0
+av==15.1.0
+matplotlib==3.10.6
+moviepy==2.2.1
+termcolor==3.1.0
+hydra-core==1.3.2
+loguru==0.7.3
+wandb==0.28.0
+einops==0.8.1
+zarr==3.1.3
+numcodecs==0.16.3
+numba==0.61.2
+llvmlite==0.44.0
+dill==0.3.6
+tqdm==4.67.1
+tyro==0.9.35

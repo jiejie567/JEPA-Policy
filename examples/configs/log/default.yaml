@@ -13,3 +13,8 @@ log_freq: 1000
 save_freq: 20000
 eval_episodes: 50
 save_video: False
+gradient_diagnostic_freq: 1000
+validation_freq: 10000
+validation_batch_size: 16
+validation_seed: 12345
+validation_delta_t: 1.0

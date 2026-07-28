@@ -31,6 +31,7 @@ from mip.dataset_utils import (
     dict_apply,
 )
 from mip.datasets.base import BaseDataset
+from mip.mimicgen_utils import is_mimicgen_task
 from mip.datasets.imagecodecs import register_codecs
 
 register_codecs()
@@ -178,29 +179,28 @@ def download_and_process_image_dataset(
 
 
 def make_dataset(task_config, mode="train"):
-    # Check if we should download from HuggingFace
-    if hasattr(task_config, "dataset_repo") and hasattr(
-        task_config, "dataset_filename"
-    ):
+    explicit_dataset_path = getattr(task_config, "dataset_path", None)
+    dataset_repo = getattr(task_config, "dataset_repo", None)
+    dataset_filename = getattr(task_config, "dataset_filename", None)
+    if explicit_dataset_path:
+        dataset_path = os.path.expanduser(explicit_dataset_path)
+    elif dataset_repo and dataset_filename:
         # Auto-download from HuggingFace
         logger.info(
-            f"Downloading dataset from {task_config.dataset_repo}/{task_config.dataset_filename}"
+            f"Downloading dataset from {dataset_repo}/{dataset_filename}"
         )
         dataset_path = hf_hub_download(
-            repo_id=task_config.dataset_repo,
-            filename=task_config.dataset_filename,
+            repo_id=dataset_repo,
+            filename=dataset_filename,
             repo_type="dataset",
         )
         logger.info(f"Downloaded dataset to: {dataset_path}")
-    elif hasattr(task_config, "dataset_path"):
-        # Use explicit path if provided
-        dataset_path = os.path.expanduser(task_config.dataset_path)
     else:
         raise ValueError(
             "Either dataset_repo/dataset_filename or dataset_path must be provided"
         )
 
-    if task_config.env_name in ["can", "lift", "square", "tool_hang", "transport"]:
+    if task_config.env_name in ["can", "lift", "square", "tool_hang", "transport"] or is_mimicgen_task(task_config):
         if task_config.obs_type == "state":
             return RobomimicDataset(
                 dataset_path,

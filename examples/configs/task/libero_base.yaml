@@ -8,7 +8,7 @@ abs_action: false
 dataset_repo: null
 dataset_path: null
 
-libero_root: /home/zzx/xj/LIBERO
+libero_root: /mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/third_party/LIBERO
 libero_camera_size: 128
 
 obs_steps: 2
@@ -17,9 +17,11 @@ num_envs: 8
 save_video: false
 val_dataset_percentage: 0.0
 resize_shape: null
-crop_shape:
-  - 76
-  - 76
+crop_shape: null
+crop_ratio: 0.9
 random_crop: true
+crop_mode: temporal_consistent
+eval_crop_mode: center
+temporal_consistent_crop: true
 use_group_norm: true
 use_seq: true

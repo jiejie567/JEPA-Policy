@@ -18,9 +18,11 @@ obs_dim: 128  # Placeholder, will be overridden for image observations
 # Common image encoder settings (for image-based tasks)
 rgb_model: resnet18
 resize_shape: null
-crop_shape:
-  - 76
-  - 76
+crop_shape: null
+crop_ratio: 0.9
 random_crop: true
+crop_mode: temporal_consistent
+eval_crop_mode: center
+temporal_consistent_crop: true
 use_group_norm: true
 use_seq: true
