@@ -1,0 +1,9 @@
+# @package task
+defaults:
+  - robotwin_base
+  - _self_
+
+env_name: "handover_block"
+robotwin_task_name: "handover_block"
+dataset_path: "/mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/datasets/robotwin/cache/handover_block"
+max_episode_steps: 800

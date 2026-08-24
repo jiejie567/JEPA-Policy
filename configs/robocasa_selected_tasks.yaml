@@ -1,0 +1,29 @@
+benchmark: robocasa
+release: "1.0.1"
+split: target
+source: human
+dataset_format: lerobot
+dataset_base_path: /mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/datasets/robocasa
+camera_keys:
+  - observation.images.robot0_agentview_left
+  - observation.images.robot0_agentview_right
+  - observation.images.robot0_eye_in_hand
+tasks:
+  SteamInMicrowave:
+    date: "20250814"
+    minimum_demos: 500
+    stages: 6
+    horizon: 2100
+    baseline_success: 0.30
+  StoreLeftoversInBowl:
+    date: "20250813"
+    minimum_demos: 500
+    stages: 5
+    horizon: 2550
+    baseline_success: 0.43
+  LoadDishwasher:
+    date: "20250811"
+    minimum_demos: 500
+    stages: 3
+    horizon: 1800
+    baseline_success: 0.47

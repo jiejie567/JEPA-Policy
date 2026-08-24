@@ -1,0 +1,79 @@
+# @package _global_
+defaults:
+  - /optimization: default
+  - /network: chitransformer
+  - /task: mug_mug_image
+  - /log: default
+  - /eval: default
+  - _self_
+
+mode: train
+
+optimization:
+  loss_type: mip
+  loss_scale: 1.0
+  t_two_step: 0.9
+  future_t_two_step: 0.9
+  seed: 42
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  batch_size: 256
+  gradient_steps: 300000
+  dataloader_num_workers: 8
+  dataloader_persistent_workers: true
+  use_compile: false
+  auto_resume: false
+  freeze_encoder: false
+  model_path: null
+  future_target_type: embedding
+  future_embed_loss_mode: mip_two_step
+  future_state_loss_mode: ratio
+  future_state_loss_ratio: 0.1
+  future_state_loss_weight_min: 0.000001
+  future_state_loss_weight_max: 0.1
+
+network:
+  emb_dim: 384
+  n_future_tokens: 0
+  use_causal_mask: false
+  use_memory_mask: false
+  rgb_model_name: resnet18
+  rgb_model_weights: null
+  imagenet_norm: false
+
+task:
+  dataset_repo: null
+  dataset_path: /mnt/data_nas/ykj_jepa_policy/datasets/libero_10/LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate_demo.hdf5
+  libero_root: /mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/third_party/LIBERO
+  # Crop variants enable crop_ratio=0.9. Symmetric-margin resolution maps
+  # LIBERO 128x128 -> 116x116 and Robomimic 84x84 -> 76x76; neither path
+  # resizes after cropping.
+  obs_steps: 2
+  horizon: 16
+  act_steps: 8
+  future_state_steps: 4
+  future_state_steps_list: [4]
+  future_target_type: embedding
+
+eval:
+  parallel_rollout: true
+  parallel_rollout_workers: 20
+  persistent_workers: true
+  rollout_seed: 12345
+  worker_timeout_seconds: 1800
+
+log:
+  wandb_mode: online
+  entity: jepa-policy
+  project: jepa-policy
+  group: mug_mug_crop_2x2
+  log_freq: 1000
+  gradient_diagnostic_freq: 1000
+  validation_freq: 10000
+  validation_batch_size: 16
+  validation_seed: 12345
+  validation_delta_t: 1.0
+  eval_freq: 10000
+  eval_episodes: 40
+  save_freq: 10000
+  save_video: false

@@ -1,0 +1,11 @@
+# @package network
+defaults:
+  - _base
+  - _self_
+
+network_type: "mlp"
+emb_dim: 512
+num_layers: 8
+dropout: 0.1
+expansion_factor: 4
+timestep_emb_dim: 128

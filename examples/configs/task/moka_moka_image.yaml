@@ -1,0 +1,43 @@
+# @package task
+defaults:
+  - libero_base
+  - _self_
+
+env_name: "moka_moka"
+obs_type: "image"
+libero_benchmark_name: "libero_10"
+libero_task_name: "KITCHEN_SCENE8_put_both_moka_pots_on_the_stove"
+dataset_filename: "libero_10/KITCHEN_SCENE8_put_both_moka_pots_on_the_stove_demo.hdf5"
+
+max_episode_steps: 600
+horizon: 16
+act_dim: 7
+obs_dim: 384
+render_obs_key: "agentview_rgb"
+num_envs: 2
+
+shape_meta:
+  action:
+    shape:
+      - 7
+  obs:
+    agentview_rgb:
+      shape:
+        - 3
+        - 128
+        - 128
+      type: rgb
+    eye_in_hand_rgb:
+      shape:
+        - 3
+        - 128
+        - 128
+      type: rgb
+    joint_states:
+      shape:
+        - 7
+      type: low_dim
+    gripper_states:
+      shape:
+        - 2
+      type: low_dim

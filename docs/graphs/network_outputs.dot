@@ -1,0 +1,20 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.55"];
+  node [shape=box, style="rounded,filled", fillcolor="#F7F9FC", color="#5B6B7D", fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=12, margin="0.12,0.08"];
+  edge [color="#5B6B7D", arrowsize=0.8, fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=11];
+
+  action_tokens [label="action tokens"];
+  future_tokens [label="future token\n或 future_input"];
+  condition [label="obs_emb + time embedding"];
+  decoder [label="Transformer decoder"];
+  action_hidden [label="action hidden tokens"];
+  future_hidden [label="future hidden tokens"];
+  action_head [label="action head\npredicted action"];
+  future_head [label="future_head\nfuture_embed_pred"];
+
+  action_tokens -> decoder;
+  future_tokens -> decoder;
+  condition -> decoder;
+  decoder -> action_hidden -> action_head;
+  decoder -> future_hidden -> future_head;
+}

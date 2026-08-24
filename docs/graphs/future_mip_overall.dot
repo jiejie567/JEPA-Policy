@@ -1,0 +1,34 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.6"];
+  node [shape=box, style="rounded,filled", fillcolor="#F7F9FC", color="#5B6B7D", fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=12, margin="0.12,0.08"];
+  edge [color="#5B6B7D", arrowsize=0.8, fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=11];
+
+  batch [label="DataLoader batch"];
+  obs [label="取当前 obs"];
+  act [label="取 action horizon"];
+  future [label="取 future_obs\n例如 t+4 观测"];
+  obs_emb [label="encoder(obs)\n得到 obs_emb"];
+  joint_mip [label="Joint Action + Future\nMIP Two-Step"];
+  future_target [label="encoder(future_obs)\n得到 future_embed_target"];
+  action_loss [label="action_loss"];
+  future_loss [label="future_loss"];
+  total [label="total_loss"];
+  backward [label="backward"];
+  clip [label="grad clip"];
+  step [label="optimizer.step"];
+  ema [label="EMA update"];
+
+  batch -> obs;
+  batch -> act;
+  batch -> future;
+  obs -> obs_emb;
+  act -> joint_mip;
+  future -> future_target;
+  obs_emb -> joint_mip;
+  future_target -> joint_mip;
+  joint_mip -> action_loss;
+  joint_mip -> future_loss;
+  action_loss -> total;
+  future_loss -> total;
+  total -> backward -> clip -> step -> ema;
+}

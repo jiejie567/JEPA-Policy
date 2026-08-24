@@ -1,0 +1,13 @@
+# @package network
+defaults:
+  - _base
+  - _self_
+
+network_type: "vanilla_rnn"
+emb_dim: 512  # Used as rnn_hidden_dim
+num_layers: 8  # Used as rnn_num_layers
+dropout: 0.1
+
+# RNN specific configs
+rnn_type: "LSTM"  # Options: LSTM, GRU
+# VanillaRNN uses s and t directly without fancy embeddings

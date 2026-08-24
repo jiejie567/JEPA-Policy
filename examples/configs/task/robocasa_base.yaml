@@ -1,0 +1,60 @@
+# @package task
+defaults:
+  - _self_
+
+env_name: ???
+env_type: "robocasa"
+obs_type: "image"
+dataset_repo: null
+dataset_filename: null
+dataset_path: ???
+abs_action: false
+robocasa_split: "target"
+max_episode_steps: ???
+obs_keys:
+  - agentview_left_image
+  - agentview_right_image
+  - robot0_eye_in_hand_image
+  - state
+obs_dim: -1
+act_dim: 12
+obs_steps: 2
+act_steps: 8
+horizon: 10
+num_envs: 1
+save_video: false
+render_obs_key: "agentview_left_image"
+eval_image_size: 128
+val_dataset_percentage: 0.0
+rgb_model: "resnet18"
+resize_shape: [128, 128]
+crop_shape: [116, 116]
+crop_ratio: null
+random_crop: true
+crop_mode: "temporal_consistent"
+eval_crop_mode: "center"
+temporal_consistent_crop: true
+use_group_norm: true
+use_seq: true
+future_state_enabled: false
+future_state_steps: 4
+future_state_steps_list: []
+future_target_type: "embedding"
+use_action_history: false
+
+shape_meta:
+  action:
+    shape: [12]
+  obs:
+    agentview_left_image:
+      shape: [3, 256, 256]
+      type: rgb
+    agentview_right_image:
+      shape: [3, 256, 256]
+      type: rgb
+    robot0_eye_in_hand_image:
+      shape: [3, 256, 256]
+      type: rgb
+    state:
+      shape: [16]
+      type: low_dim

@@ -1,0 +1,43 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.65"];
+  node [shape=box, style="rounded,filled", fillcolor="#F7F9FC", color="#5B6B7D", fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=12, margin="0.14,0.08"];
+  edge [color="#5B6B7D", arrowsize=0.8, fontname="Noto Sans CJK SC, Microsoft YaHei, Arial", fontsize=11];
+
+  obs [label="当前观测 obs"];
+  encoder [label="Encoder\n当前 obs -> obs_emb", fillcolor="#EEF7FF"];
+  time [label="时间输入\ns, t"];
+  cond [label="条件序列\nobs_emb + time embedding", fillcolor="#EEF7FF"];
+
+  action_input [label="Action 输入\nact_0 或 act_t"];
+  action_tokens [label="Action tokens\n长度 Ta"];
+  future_mode [shape=diamond, fillcolor="#FFF8E6", label="是否传入\nfuture_input?"];
+  learned_future [label="没有传 future_input\n使用 learned future token"];
+  noisy_future [label="传入 future_input\nfuture_embed_0 或 future_embed_t"];
+  future_tokens [label="Future tokens\n长度 n_future_tokens"];
+
+  decoder [label="同一个 Transformer Decoder / 共享主干参数\n处理 action tokens + future tokens\n并 cross-attend 条件序列", fillcolor="#EAF8EF", color="#3D7A4B", penwidth=2];
+
+  action_hidden [label="取前 Ta 个 hidden states\naction hidden tokens", fillcolor="#F1F5FF"];
+  future_hidden [label="取后 n_future_tokens 个 hidden states\nfuture hidden tokens", fillcolor="#FFF3EF"];
+
+  action_head [label="Action head\nLinear(d_model -> act_dim)", fillcolor="#F1F5FF"];
+  future_head [label="Future head\nLinear(d_model -> future_out_dim)", fillcolor="#FFF3EF"];
+
+  action_out [label="predicted action\n用于 action MIP loss\n推理时使用", fillcolor="#F1F5FF"];
+  future_out [label="future_embed_pred\n用于 future embedding loss\n推理动作时可不用", fillcolor="#FFF3EF"];
+
+  obs -> encoder -> cond;
+  time -> cond;
+  action_input -> action_tokens;
+  future_mode -> learned_future [label="否"];
+  future_mode -> noisy_future [label="是"];
+  learned_future -> future_tokens;
+  noisy_future -> future_tokens;
+
+  action_tokens -> decoder;
+  future_tokens -> decoder;
+  cond -> decoder;
+
+  decoder -> action_hidden -> action_head -> action_out;
+  decoder -> future_hidden -> future_head -> future_out;
+}

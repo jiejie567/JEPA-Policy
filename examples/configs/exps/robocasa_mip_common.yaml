@@ -1,0 +1,56 @@
+# @package _global_
+defaults:
+  - /optimization: default
+  - /network: chitransformer
+  - /task: steam_in_microwave_robocasa_image
+  - /log: default
+  - /eval: default
+  - _self_
+
+mode: train
+
+optimization:
+  loss_type: mip
+  loss_scale: 1.0
+  t_two_step: 0.9
+  future_t_two_step: 0.9
+  seed: 41
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  batch_size: 128
+  gradient_steps: 300000
+  dataloader_num_workers: 8
+  dataloader_persistent_workers: true
+  use_compile: false
+  auto_resume: false
+  device: cuda
+
+network:
+  emb_dim: 384
+  rgb_model_name: resnet18
+  rgb_model_weights: null
+  imagenet_norm: false
+  use_causal_mask: false
+  use_memory_mask: false
+
+eval:
+  # Enable the persistent pool only after a DLC node-level capacity smoke test.
+  parallel_rollout: false
+  parallel_rollout_workers: 1
+  persistent_workers: true
+  rollout_seed: 12345
+  worker_timeout_seconds: 3600
+
+log:
+  wandb_mode: disabled
+  entity: jepa-policy
+  project: robocasa
+  group: "${task.env_name}"
+  log_freq: 1000
+  gradient_diagnostic_freq: 1000
+  validation_freq: 10000
+  validation_batch_size: 16
+  eval_freq: 10000
+  eval_episodes: 40
+  save_freq: 10000
+  save_video: false
