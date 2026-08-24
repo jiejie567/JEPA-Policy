@@ -1,8 +1,0 @@
-# @package _global_
-defaults: 
-  - override /hydra/launcher: basic
-  - _self_
-
-hydra:
-  sweep:
-    dir: "${outputs_root_dir}"
