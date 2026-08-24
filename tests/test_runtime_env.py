@@ -26,15 +26,6 @@ from mip import runtime_env
                 "robosuite": "1.4.1",
             },
         ),
-        (
-            SimpleNamespace(env_type="robotwin", env_name="handover_block"),
-            {
-                "gymnasium": "0.29.1",
-                "mplib": "0.2.1",
-                "numpy": "1.26.4",
-                "sapien": "3.0.0b1",
-            },
-        ),
     ],
 )
 def test_validate_runtime_environment_accepts_matching_versions(

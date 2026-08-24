@@ -42,8 +42,8 @@ from mip.envs.persistent_image_rollout import PersistentImageRolloutPool
 from mip.eval_rng import get_episode_seeds, get_rollout_seed, isolated_torch_rng
 from mip.libero_utils import is_libero_task
 from mip.logger import Logger, compute_average_metrics, update_best_metrics
+from mip.photometric_augmentation import augment_robot_rgb_batch
 from mip.runtime_env import validate_runtime_environment
-from mip.robotwin_utils import is_robotwin_task
 from mip.samplers import get_default_step_list
 from mip.scheduler import WarmupAnnealingScheduler
 from mip.torch_utils import set_seed
@@ -106,10 +106,6 @@ def get_checkpoint_base_name(config: Config) -> str:
     if getattr(config.optimization, "freeze_encoder", False):
         base_name += "_freezeenc"
 
-    if getattr(config.optimization, "use_sigreg", False):
-        sigreg_weight = getattr(config.optimization, "sigreg_weight", 0.0)
-        base_name += f"_sigreg{_format_suffix_value(sigreg_weight)}"
-
     return base_name
 
 
@@ -119,6 +115,55 @@ def build_training_state(n_gradient_step: int, best_metrics: dict, eval_history:
         "best_metrics": best_metrics,
         "eval_history": eval_history,
     }
+
+
+def resolve_training_end_step(config) -> int:
+    """Return optimizer steps to execute without changing schedule horizons."""
+    gradient_steps = int(config.optimization.gradient_steps)
+    stop_after_steps = getattr(config.optimization, "stop_after_steps", None)
+    if stop_after_steps is None:
+        return gradient_steps
+    stop_after_steps = int(stop_after_steps)
+    if not 0 < stop_after_steps <= gradient_steps:
+        raise ValueError(
+            "optimization.stop_after_steps must be in "
+            f"[1, {gradient_steps}], got {stop_after_steps}"
+        )
+    return stop_after_steps
+
+
+def validate_snapshot_steps(config, training_end_step: int) -> tuple[int, ...]:
+    """Validate and normalize exact completed-step snapshot positions."""
+    values = tuple(int(step) for step in getattr(config.log, "snapshot_steps", []))
+    if len(values) != len(set(values)) or tuple(sorted(values)) != values:
+        raise ValueError("log.snapshot_steps must be unique and increasing")
+    if any(step < 0 or step > training_end_step for step in values):
+        raise ValueError(
+            "log.snapshot_steps must be between 0 and the effective training "
+            f"end ({training_end_step}), got {values}"
+        )
+    return values
+
+
+def save_trajectory_snapshot(
+    logger,
+    agent,
+    completed_steps: int,
+    best_metrics: dict,
+    eval_history: list,
+) -> None:
+    """Save a model-only checkpoint for offline trajectory auditing."""
+    training_state = build_training_state(
+        n_gradient_step=completed_steps - 1,
+        best_metrics=best_metrics,
+        eval_history=eval_history,
+    )
+    logger.save_agent(
+        agent=agent,
+        identifier=f"collapse_step{completed_steps:06d}",
+        training_state=training_state,
+        include_optimizer=False,
+    )
 
 
 def infer_resume_state_from_metrics(log_dir: str | Path):
@@ -243,10 +288,23 @@ def train(
         if start_step > 0:
             lr_scheduler.step(start_step)
 
+    training_end_step = resolve_training_end_step(config)
+    snapshot_steps = validate_snapshot_steps(config, training_end_step)
+    loguru.logger.info(
+        "Training step plan: "
+        f"scheduler_horizon={config.optimization.gradient_steps}, "
+        f"stop_after_steps={training_end_step}, "
+        f"snapshot_steps={list(snapshot_steps)}"
+    )
+    if start_step == 0 and 0 in snapshot_steps:
+        save_trajectory_snapshot(
+            logger, agent, 0, best_metrics, eval_history
+        )
+
     info_list = []
     fixed_validation_batch = None
     start_time = time.time()
-    for n_gradient_step in range(start_step, config.optimization.gradient_steps):
+    for n_gradient_step in range(start_step, training_end_step):
         # get batch from dataloader
         data_wait_started = time.perf_counter()
         batch = next(loop_loader)
@@ -306,6 +364,11 @@ def train(
                 f"seed={config.log.validation_seed}"
             )
 
+        if config.task.obs_type == "image":
+            obs, future_obs = augment_robot_rgb_batch(
+                obs, future_obs, config.task
+            )
+
         gradient_diagnostic_freq = config.log.gradient_diagnostic_freq
         compute_gradient_diagnostics = (
             gradient_diagnostic_freq > 0
@@ -328,6 +391,19 @@ def train(
 
         lr_scheduler.step()
         info_list.append(info)
+
+        completed_steps = n_gradient_step + 1
+        if completed_steps in snapshot_steps:
+            loguru.logger.info(
+                f"Save collapse trajectory snapshot at step {completed_steps}..."
+            )
+            save_trajectory_snapshot(
+                logger,
+                agent,
+                completed_steps,
+                best_metrics,
+                eval_history,
+            )
 
         # log metrics
         if ((n_gradient_step + 1) % config.log.log_freq) == 0:
@@ -396,7 +472,11 @@ def train(
                 training_state=training_state,
             )
 
-        if ((n_gradient_step + 1) % config.log.eval_freq) == 0:
+        if (
+            config.log.eval_freq > 0
+            and (envs is not None or parallel_pool is not None)
+            and ((n_gradient_step + 1) % config.log.eval_freq) == 0
+        ):
             loguru.logger.info("Evaluate model...")
             agent.eval()
             metrics = {"step": n_gradient_step}
@@ -552,7 +632,7 @@ def eval(config: Config, envs, dataset, agent, logger, num_steps=1):
     episode_kit_success = []
     env_type = getattr(config.task, "env_type", None)
     is_adroit_task = env_type == "adroit"
-    is_terminal_success_task = env_type in {"adroit", "robotwin"} or (
+    is_terminal_success_task = env_type == "adroit" or (
         config.task.env_name in {"can", "lift", "square", "tool_hang", "transport"}
     )
 
@@ -704,6 +784,7 @@ def eval(config: Config, envs, dataset, agent, logger, num_steps=1):
 def parallel_image_eval(config, pool, dataset, agent, num_steps=1):
     """Evaluate image policies with env-only workers and batched GPU inference."""
     workers = pool.num_workers
+    success_from_reward = is_libero_task(config.task)
     if config.task.obs_type != "image":
         raise ValueError("Persistent parallel rollout only supports image observations")
     if config.log.save_video or config.task.save_video:
@@ -799,7 +880,14 @@ def parallel_image_eval(config, pool, dataset, agent, num_steps=1):
                     np.asarray(reward, dtype=np.float32).reshape(-1)[0]
                 )
                 ep_reward[worker_index] += reward_value
-                success = bool(_extract_success_info(info, 1)[0])
+                # LIBERO signals task completion with its sparse positive reward
+                # and does not populate info["success"]. Keep this consistent
+                # with serial eval, which also uses reward > 0 for LIBERO.
+                success = (
+                    reward_value > 0.0
+                    if success_from_reward
+                    else bool(_extract_success_info(info, 1)[0])
+                )
                 ep_success[worker_index] |= success
                 ep_done[worker_index] |= bool(
                     success
@@ -894,21 +982,16 @@ def main(config):
     # image mode, avoid keeping an unused second set of EGL environments alive;
     # construct the serial env lazily only if fallback is required.
     parallel_requested = bool(getattr(config.eval, "parallel_rollout", False))
-    robotwin_task = is_robotwin_task(config.task)
     envs = None
     if parallel_requested and config.task.obs_type == "image":
-        # RoboTwin keeps a 14-D proprioceptive state alongside RGB inputs.
-        # Its dataset and rollout workers both validate this raw dimension;
-        # the image network already takes its condition width from emb_dim.
-        if not robotwin_task:
-            config.task.obs_dim = config.network.emb_dim
+        config.task.obs_dim = config.network.emb_dim
         loguru.logger.info("Deferring serial env creation for parallel image eval")
     else:
         envs = make_vec_env(config.task, seed=get_rollout_seed(config))
         obs, info = envs.reset()
         if config.task.obs_type == "state":
             config.task.obs_dim = obs.shape[-1]
-        elif not robotwin_task:
+        else:
             config.task.obs_dim = config.network.emb_dim
         loguru.logger.info("Finished setting up env")
 

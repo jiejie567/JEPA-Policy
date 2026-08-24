@@ -80,6 +80,7 @@ class ChiTransformer(BaseNetwork):
         future_out_dim: int | None = None,
         use_causal_mask: bool = False,
         use_memory_mask: bool = False,
+        block_action_from_future: bool = False,
     ):
         # Initialize BaseNetwork with proper parameters
         super().__init__(act_dim, Ta, obs_dim, To, d_model, num_layers)
@@ -98,6 +99,11 @@ class ChiTransformer(BaseNetwork):
         self.future_out_dim = obs_dim if future_out_dim is None else future_out_dim
         self.use_causal_mask = use_causal_mask
         self.use_memory_mask = use_memory_mask
+        self.block_action_from_future = block_action_from_future
+        if self.block_action_from_future and self.n_future_tokens <= 0:
+            raise ValueError(
+                "block_action_from_future requires n_future_tokens > 0"
+            )
 
         # input embedding stem
         self.input_emb = nn.Linear(act_dim, d_model)
@@ -169,6 +175,16 @@ class ChiTransformer(BaseNetwork):
             .masked_fill(mask == 1, 0.0)
         )
         self.register_buffer("mask", mask)
+
+        # Orthogonal mechanism control: action tokens cannot read future-token
+        # values, but future tokens may still read action tokens. Both token
+        # groups continue through the same Transformer parameters, so the
+        # future objective can regularize the shared representation without a
+        # forward future-latent shortcut into action prediction.
+        action_future_mask = torch.zeros(sz, sz)
+        if self.n_future_tokens > 0:
+            action_future_mask[: self.Ta, self.Ta :] = float("-inf")
+        self.register_buffer("action_future_mask", action_future_mask)
 
         # attention mask for decoder cross-attention
         S = T_cond
@@ -323,10 +339,17 @@ class ChiTransformer(BaseNetwork):
         decoder_input = self.drop(
             token_embeddings + position_embeddings
         )  # (b, T, d_model)
+        if self.block_action_from_future:
+            tgt_mask = self.action_future_mask
+            if self.use_causal_mask:
+                tgt_mask = tgt_mask + self.mask
+        else:
+            tgt_mask = self.mask if self.use_causal_mask else None
+
         decoder_output = self.decoder(
             tgt=decoder_input,
             memory=memory,
-            tgt_mask=self.mask if self.use_causal_mask else None,
+            tgt_mask=tgt_mask,
             memory_mask=self.memory_mask if self.use_memory_mask else None,
         )  # (b, T, d_model)
 
@@ -359,13 +382,21 @@ class ChiTransformer(BaseNetwork):
         t: torch.Tensor,
         condition: torch.Tensor | None = None,
         future_input: torch.Tensor | None = None,
+        *,
+        stopgrad_future_trunk: bool = False,
     ):
         y, scalar_output, decoder_output = self._forward_features(
             x, s, t, condition, future_input=future_input
         )
         future_embed_pred = None
         if self.n_future_tokens > 0 and self.future_head is not None:
-            future_embed_pred = self.future_head(decoder_output[:, self.Ta :, :])
+            future_hidden = decoder_output[:, self.Ta :, :]
+            if stopgrad_future_trunk:
+                # The future head remains trainable, while the auxiliary loss
+                # cannot update the shared transformer or anything upstream.
+                # Values and the action forward path are exactly unchanged.
+                future_hidden = future_hidden.detach()
+            future_embed_pred = self.future_head(future_hidden)
             if self.n_future_tokens == 1:
                 future_embed_pred = future_embed_pred[:, 0, :]
         return y, scalar_output, future_embed_pred
@@ -377,6 +408,8 @@ class ChiTransformer(BaseNetwork):
         t: torch.Tensor,
         condition: torch.Tensor,
         future_input: torch.Tensor,
+        *,
+        stopgrad_future_trunk: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Predict action and future from one shared-transformer forward."""
         if self.n_future_tokens <= 0 or self.future_head is None:
@@ -389,8 +422,40 @@ class ChiTransformer(BaseNetwork):
             t,
             condition,
             future_input=future_input,
+            stopgrad_future_trunk=stopgrad_future_trunk,
         )
         return action_pred, future_pred
+
+    def joint_action_forward(
+        self,
+        action_input: torch.Tensor,
+        s: torch.Tensor,
+        t: torch.Tensor,
+        condition: torch.Tensor,
+        future_input: torch.Tensor,
+    ) -> torch.Tensor:
+        """Predict only the action while preserving the complete joint trunk.
+
+        This entry point is intentionally narrower than ``joint_forward``.  It
+        keeps the future input tokens, encoder/decoder attention, normalization,
+        and action head identical, but does not execute the final future-output
+        projection.  Selection evaluation may use it only after proving that
+        its action is bitwise identical to ``joint_forward`` on the same input.
+        """
+        if self.n_future_tokens <= 0 or self.future_head is None:
+            raise RuntimeError("joint_action_forward requires n_future_tokens > 0")
+        if future_input is None:
+            raise ValueError(
+                "joint_action_forward requires explicit future_input content"
+            )
+        action_pred, _, _ = self._forward_features(
+            action_input,
+            s,
+            t,
+            condition,
+            future_input=future_input,
+        )
+        return action_pred
 
     def forward_with_aux(
         self,

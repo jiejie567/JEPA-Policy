@@ -131,10 +131,21 @@ class Logger:
         # Log to wandb
         self._wandb_run.log(_d, step=d["step"])
 
-    def save_agent(self, agent=None, identifier="final", training_state=None):
+    def save_agent(
+        self,
+        agent=None,
+        identifier="final",
+        training_state=None,
+        *,
+        include_optimizer=True,
+    ):
         if agent:
             fp = self._model_dir / f"model_{str(identifier)}.pt"
-            agent.save(fp, training_state=training_state)
+            agent.save(
+                fp,
+                training_state=training_state,
+                include_optimizer=include_optimizer,
+            )
             loguru.logger.info(f"model_{str(identifier)} saved")
 
     def save_global_checkpoint(self, agent, checkpoint_name, success_rate, training_state=None):

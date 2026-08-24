@@ -20,6 +20,9 @@ class LogConfig:
     validation_batch_size: int = 16
     validation_seed: int = 12345
     validation_delta_t: float = 1.0
+    # Exact optimizer-step counts at which to save lightweight, model-only
+    # trajectory checkpoints. Step 0 is the initialized model before updates.
+    snapshot_steps: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -53,6 +56,9 @@ class OptimizationConfig:
     dataloader_num_workers: int = 8
     dataloader_persistent_workers: bool = True
     gradient_steps: int = 150000
+    # Optional early termination for trajectory audits. Scheduler horizons still
+    # use ``gradient_steps`` so the prefix keeps the formal 300k schedule.
+    stop_after_steps: int | None = None
     warmup_ratio: float = 0.0
     rampup_ratio: float = 0.5
     min_value: float = 0.0
@@ -69,6 +75,10 @@ class OptimizationConfig:
     use_future_embed_loss: bool = False
     future_embed_loss_mode: str = "direct"  # "direct" or "mip_two_step"
     future_joint_mode: bool = False
+    # Preserve the complete joint forward path while allowing the auxiliary
+    # future loss to update only the future projection head. Action loss still
+    # updates the encoder, shared transformer, token embeddings, and action head.
+    future_head_only_stopgrad: bool = False
     future_t_two_step: float = 0.9
     future_embed_loss_weight: float = 0.01
     future_state_loss_weight: float = 0.1
@@ -77,10 +87,6 @@ class OptimizationConfig:
     future_state_loss_weight_min: float = 1e-4
     future_state_loss_weight_max: float = 1.0
     future_target_type: str = "state"
-    use_sigreg: bool = False
-    sigreg_weight: float = 0.0
-    sigreg_knots: int = 17
-    sigreg_num_proj: int = 1024
 
 
 
@@ -108,6 +114,9 @@ class NetworkConfig:
     attn_dropout: float = 0.1
     use_causal_mask: bool = False
     use_memory_mask: bool = False
+    # Prevent action-token queries from attending to future-token keys while
+    # retaining the shared Transformer and the future auxiliary objective.
+    block_action_from_future: bool = False
     # UNet specific configs
     model_dim: int = 256
     kernel_size: int = 5
@@ -125,6 +134,12 @@ class NetworkConfig:
     dino_embed_dim: int = 384
     dino_out_dim: int = 768
     n_future_tokens: int = 0
+    # Dual ChiTransformer-only settings. Legacy network types ignore these
+    # fields so existing configurations and checkpoints retain their behavior.
+    future_emb_dim: int = 192
+    future_num_layers: int = 8
+    future_n_heads: int = 6
+    future_ffn_dim: int = 768
 
 
 
@@ -172,13 +187,21 @@ class TaskConfig:
     crop_mode: str | None = None
     eval_crop_mode: str = "center"
     temporal_consistent_crop: bool = False
+    photometric_aug_enabled: bool = False
+    gpu_photometric_aug_enabled: bool = False
+    photometric_aug_probability: float = 0.8
+    photometric_brightness: float = 0.2
+    photometric_contrast: float = 0.2
+    photometric_saturation: float = 0.1
+    photometric_hue: float = 0.03
+    photometric_gamma_min: float = 0.8
+    photometric_gamma_max: float = 1.2
     use_group_norm: bool = True
     use_seq: bool = True
     libero_benchmark_name: str | None = None
     libero_task_name: str | None = None
     libero_root: str | None = None
     libero_camera_size: int = 128
-    robocasa_split: str = "target"
     future_state_enabled: bool = False
     future_state_steps: int = 1
     future_state_steps_list: list[int] = field(default_factory=list)

@@ -6,9 +6,62 @@ import multiprocessing as mp
 import os
 import time
 import traceback
+from collections.abc import Mapping
 from copy import deepcopy
 
+import numpy as np
 from omegaconf import OmegaConf
+
+
+def _add_single_env_batch(value):
+    """Restore the leading vector-env dimension after a direct sub-env call."""
+
+    if isinstance(value, Mapping):
+        return {key: _add_single_env_batch(child) for key, child in value.items()}
+    if isinstance(value, np.ndarray):
+        return np.expand_dims(value, axis=0)
+    if isinstance(value, np.generic):
+        return np.asarray([value])
+    if isinstance(value, (bool, int, float)):
+        return np.asarray([value])
+    if isinstance(value, tuple):
+        return tuple(_add_single_env_batch(child) for child in value)
+    if isinstance(value, list):
+        return [_add_single_env_batch(child) for child in value]
+    return value
+
+
+def _vectorize_capture_result(result):
+    """Match ``SyncVectorEnv`` output shapes for one direct wrapper call."""
+
+    observation, reward, terminated, truncated, info, capture = result
+    vector_capture = dict(capture)
+    if capture["observation"] is not None:
+        vector_capture["observation"] = _add_single_env_batch(
+            capture["observation"]
+        )
+    return (
+        _add_single_env_batch(observation),
+        _add_single_env_batch(reward),
+        _add_single_env_batch(terminated),
+        _add_single_env_batch(truncated),
+        _add_single_env_batch(info),
+        vector_capture,
+    )
+
+
+def _vectorize_metadata_result(result):
+    """Match vector shapes while retaining scalar execution metadata."""
+
+    observation, reward, terminated, truncated, info, metadata = result
+    return (
+        _add_single_env_batch(observation),
+        _add_single_env_batch(reward),
+        _add_single_env_batch(terminated),
+        _add_single_env_batch(truncated),
+        _add_single_env_batch(info),
+        dict(metadata),
+    )
 
 
 def _env_worker(task_config_dict, worker_id, base_seed, connection):
@@ -27,7 +80,9 @@ def _env_worker(task_config_dict, worker_id, base_seed, connection):
         task_config = OmegaConf.create(task_config_dict)
         task_config.num_envs = 1
         task_config.save_video = False
-        env = make_vec_env(task_config, seed=int(base_seed) + int(worker_id))
+        # Episode reset seeds are authoritative.  Worker identity must never
+        # change an episode's stochastic stream.
+        env = make_vec_env(task_config, seed=int(base_seed))
         connection.send(("ready", {"worker_id": int(worker_id)}))
 
         while True:
@@ -37,10 +92,51 @@ def _env_worker(task_config_dict, worker_id, base_seed, connection):
                 try:
                     result = env.reset(seed=seed)
                 except TypeError:
+                    if hasattr(env, "seed"):
+                        env.seed(seed)
                     result = env.reset()
                 connection.send(("ok", result))
             elif command == "step":
                 connection.send(("ok", env.step(payload["action"])))
+            elif command == "step_with_capture":
+                if not hasattr(env, "call"):
+                    raise RuntimeError(
+                        "Audit capture requires a vector environment with call()"
+                    )
+                action = np.asarray(payload["action"])
+                if action.shape[0] != 1:
+                    raise ValueError(
+                        "Each persistent worker requires one batched action chunk"
+                    )
+                called = env.call(
+                    "step_with_capture",
+                    action[0],
+                    capture_after_steps=int(payload["capture_after_steps"]),
+                    capture_keys=tuple(payload["capture_keys"]),
+                )
+                if len(called) != 1:
+                    raise RuntimeError(
+                        "Persistent worker expected exactly one sub-environment"
+                    )
+                connection.send(
+                    ("ok", _vectorize_capture_result(called[0]))
+                )
+            elif command == "step_with_metadata":
+                if not hasattr(env, "call"):
+                    raise RuntimeError(
+                        "Selection metadata requires a vector environment with call()"
+                    )
+                action = np.asarray(payload["action"])
+                if action.shape[0] != 1:
+                    raise ValueError(
+                        "Each persistent worker requires one batched action chunk"
+                    )
+                called = env.call("step_with_metadata", action[0])
+                if len(called) != 1:
+                    raise RuntimeError(
+                        "Persistent worker expected exactly one sub-environment"
+                    )
+                connection.send(("ok", _vectorize_metadata_result(called[0])))
             elif command == "close":
                 connection.send(("ok", None))
                 break
@@ -125,15 +221,24 @@ class PersistentImageRolloutPool:
             raise RuntimeError(f"Image rollout worker {worker_id} failed:\n{payload}")
         return status, payload
 
-    def reset(self, seeds):
+    def reset(self, seeds, worker_indices=None):
         self.start()
-        if len(seeds) != self.num_workers:
-            raise ValueError("reset seeds must match parallel worker count")
-        for connection, seed in zip(self.connections, seeds, strict=True):
+        if worker_indices is None:
+            worker_indices = list(range(self.num_workers))
+        else:
+            worker_indices = [int(index) for index in worker_indices]
+        if len(seeds) != len(worker_indices):
+            raise ValueError("reset seeds must match selected rollout workers")
+        if len(set(worker_indices)) != len(worker_indices) or any(
+            index < 0 or index >= self.num_workers for index in worker_indices
+        ):
+            raise ValueError("worker_indices must be unique valid workers")
+        for worker_index, seed in zip(worker_indices, seeds, strict=True):
+            connection = self.connections[worker_index]
             connection.send(("reset", {"seed": int(seed)}))
         return [
-            self._recv(connection, worker_id)[1]
-            for worker_id, connection in enumerate(self.connections)
+            self._recv(self.connections[worker_index], worker_index)[1]
+            for worker_index in worker_indices
         ]
 
     def step(self, actions, worker_indices=None):
@@ -158,6 +263,70 @@ class PersistentImageRolloutPool:
             self._recv(self.connections[worker_index], worker_index)[1]
             for worker_index in worker_indices
         ]
+
+    def step_with_capture(
+        self,
+        actions,
+        *,
+        capture_after_steps,
+        capture_keys,
+        worker_indices=None,
+    ):
+        """Step active workers and capture immutable target observations."""
+
+        self.start()
+        if worker_indices is None:
+            worker_indices = list(range(self.num_workers))
+        else:
+            worker_indices = [int(index) for index in worker_indices]
+        if len(actions) != len(worker_indices):
+            raise ValueError("actions must match selected rollout workers")
+        if len(set(worker_indices)) != len(worker_indices) or any(
+            index < 0 or index >= self.num_workers for index in worker_indices
+        ):
+            raise ValueError("worker_indices must be unique valid workers")
+        if not capture_keys:
+            raise ValueError("capture_keys must be resolved before worker dispatch")
+        payloads = [
+            {
+                "action": action,
+                "capture_after_steps": int(capture_after_steps),
+                "capture_keys": list(capture_keys),
+            }
+            for action in actions
+        ]
+        for worker_index, payload in zip(
+            worker_indices, payloads, strict=True
+        ):
+            self.connections[worker_index].send(("step_with_capture", payload))
+        return [
+            self._recv(self.connections[worker_index], worker_index)[1]
+            for worker_index in worker_indices
+        ]
+
+    def step_with_metadata(self, actions, worker_indices=None):
+        """Step selection workers without invoking observation capture."""
+
+        self.start()
+        if worker_indices is None:
+            worker_indices = list(range(self.num_workers))
+        else:
+            worker_indices = [int(index) for index in worker_indices]
+        if len(actions) != len(worker_indices):
+            raise ValueError("actions must match selected rollout workers")
+        if len(set(worker_indices)) != len(worker_indices) or any(
+            index < 0 or index >= self.num_workers for index in worker_indices
+        ):
+            raise ValueError("worker_indices must be unique valid workers")
+        for worker_index, action in zip(worker_indices, actions, strict=True):
+            self.connections[worker_index].send(
+                ("step_with_metadata", {"action": action})
+            )
+        return [
+            self._recv(self.connections[worker_index], worker_index)[1]
+            for worker_index in worker_indices
+        ]
+
 
     def close(self):
         for connection in getattr(self, "connections", []):

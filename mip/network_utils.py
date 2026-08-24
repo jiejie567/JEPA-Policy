@@ -81,6 +81,7 @@ def get_network(
             future_out_dim=future_out_dim or network_config.emb_dim,
             use_causal_mask=network_config.use_causal_mask,
             use_memory_mask=network_config.use_memory_mask,
+            block_action_from_future=network_config.block_action_from_future,
         )
     elif network_config.network_type == "chitransformer_dino_aux":
         return network_class(

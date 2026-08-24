@@ -15,10 +15,100 @@ from mip.mimicgen_utils import is_mimicgen_task
 
 
 _ROBOMIMIC_TASKS = {"can", "lift", "square", "tool_hang", "transport"}
+_CONTROLLER_INPUT_TYPES = {"absolute", "delta"}
 
 
 def _is_supported_task(task_config: TaskConfig) -> bool:
     return task_config.env_name in _ROBOMIMIC_TASKS or is_mimicgen_task(task_config)
+
+
+def _apply_controller_input_type_override(env_meta: dict, input_type: str | None) -> None:
+    """Apply an explicitly requested Robosuite arm-controller input mode.
+
+    This is intentionally opt-in. Existing tasks that do not set
+    ``task.robosuite_controller_input_type_override`` retain the historical
+    controller setup, so state-absolute experiments cannot change concurrent
+    image or delta-action training behavior.
+    """
+    if input_type is None:
+        return
+    if input_type not in _CONTROLLER_INPUT_TYPES:
+        raise ValueError(
+            "robosuite_controller_input_type_override must be one of "
+            f"{sorted(_CONTROLLER_INPUT_TYPES)}, got {input_type!r}"
+        )
+
+    controller_config = env_meta["env_kwargs"]["controller_configs"]
+    body_parts = controller_config.get("body_parts")
+    if body_parts is not None:
+        updated_parts = []
+        for part_name, part_config in body_parts.items():
+            if not isinstance(part_config, dict):
+                continue
+            # Robosuite 1.5 controller metadata stores the arm configuration
+            # under body_parts. ``control_delta`` is the legacy field retained
+            # in converted Robomimic datasets; the runtime consumes input_type.
+            if "control_delta" in part_config or "input_type" in part_config:
+                part_config["input_type"] = input_type
+                updated_parts.append(part_name)
+        if not updated_parts:
+            raise ValueError(
+                "controller input override requested, but no Robosuite arm "
+                "controller was found under controller_configs.body_parts"
+            )
+        return
+
+    # Robosuite <=1.4 used a flat controller configuration. Set both spellings
+    # so an explicit override remains valid across the supported versions.
+    controller_config["input_type"] = input_type
+    controller_config["control_delta"] = input_type == "delta"
+
+
+def _assert_controller_input_type(env, expected: str | None) -> None:
+    """Verify the realized Robosuite arm controllers after construction."""
+    if expected is None:
+        return
+
+    robosuite_env = env
+    robots = None
+    for _ in range(8):
+        robots = getattr(robosuite_env, "robots", None)
+        if robots:
+            break
+        robosuite_env = getattr(robosuite_env, "env", None)
+        if robosuite_env is None:
+            break
+    if not robots:
+        raise RuntimeError(
+            "controller input override requested, but the constructed environment "
+            "does not expose Robosuite robots"
+        )
+
+    realized = []
+    for robot_index, robot in enumerate(robots):
+        composite = getattr(robot, "composite_controller", None)
+        part_controllers = getattr(composite, "part_controllers", {})
+        for part_name, controller in part_controllers.items():
+            input_type = getattr(controller, "input_type", None)
+            if input_type is not None:
+                realized.append((robot_index, part_name, input_type))
+
+    if not realized:
+        raise RuntimeError(
+            "controller input override requested, but no realized arm controller "
+            "exposes input_type"
+        )
+    mismatched = [item for item in realized if item[2] != expected]
+    if mismatched:
+        raise RuntimeError(
+            f"Robosuite controller input type mismatch: expected={expected!r}, "
+            f"realized={realized!r}"
+        )
+    logger.info(
+        "Verified Robosuite controller input override: expected={} realized={}",
+        expected,
+        realized,
+    )
 
 
 def make_env(task_config: TaskConfig, idx, render=False, seed=None):
@@ -125,7 +215,17 @@ def make_robomimic_env(task_config: TaskConfig, idx, render=False, seed=None):
             # disable object state observation for image mode
             env_meta["env_kwargs"]["use_object_obs"] = False
         abs_action = task_config.abs_action
-        if abs_action:
+        controller_input_type_override = getattr(
+            task_config, "robosuite_controller_input_type_override", None
+        )
+        if controller_input_type_override is not None:
+            _apply_controller_input_type_override(
+                env_meta, controller_input_type_override
+            )
+        elif abs_action:
+            # Preserve the historical behavior for every existing task. The
+            # explicit override above is used only by isolated state-absolute
+            # runs that need Robosuite 1.5's nested input_type field.
             env_meta["env_kwargs"]["controller_configs"]["control_delta"] = False
 
         if task_config.obs_type == "state":
@@ -150,6 +250,8 @@ def make_robomimic_env(task_config: TaskConfig, idx, render=False, seed=None):
                 init_state=None,
                 render_obs_key=task_config.render_obs_key,
             )
+
+        _assert_controller_input_type(env, controller_input_type_override)
 
         video_recoder = VideoRecorder.create_h264(
             fps=10,

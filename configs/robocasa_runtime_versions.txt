@@ -1,9 +1,0 @@
-# Core versions required by RoboCasa 1.0.1. The full transitive environment is
-# installed only in /mnt/data_nas/ykj_jepa_policy/venvs/robocasa.
-robocasa==1.0.1
-robosuite==1.5.2
-numpy==2.2.5
-numba==0.61.2
-scipy==1.15.3
-mujoco==3.3.1
-lerobot==0.3.3

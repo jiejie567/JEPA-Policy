@@ -21,11 +21,12 @@ class TinyEncoder(nn.Module):
         return self.proj(obs)
 
 
-def make_agent(future_weight=0.01):
+def make_agent(future_weight=0.01, future_head_only_stopgrad=False):
     torch.manual_seed(7)
     agent = TrainingAgent.__new__(TrainingAgent)
     optimization = SimpleNamespace(
         future_joint_mode=True,
+        future_head_only_stopgrad=future_head_only_stopgrad,
         loss_type="mip",
         future_embed_loss_mode="mip_two_step",
         use_future_embed_loss=True,
@@ -38,8 +39,6 @@ def make_agent(future_weight=0.01):
         future_state_loss_weight_min=1e-4,
         future_state_loss_weight_max=1.0,
         freeze_encoder=False,
-        use_sigreg=False,
-        sigreg_weight=0.0,
         grad_clip_norm=10.0,
         ema_rate=1.0,
         device="cpu",
@@ -74,7 +73,6 @@ def make_agent(future_weight=0.01):
         list(agent.encoder.parameters()) + list(agent.flow_map.parameters()),
         lr=1e-4,
     )
-    agent.sigreg = None
     agent._future_nonfinite_logged = False
     return agent
 
@@ -165,6 +163,71 @@ def test_joint_gradient_paths_and_head_separation():
     assert grad_norm(future_loss, net.decoder.parameters()) > 0
     assert grad_norm(action_loss, agent.encoder.parameters()) > 0
     assert grad_norm(future_loss, agent.encoder.parameters()) > 0
+
+
+def test_head_only_stopgrad_preserves_forward_values_and_blocks_future_trunk_gradients():
+    full_agent = make_agent(future_head_only_stopgrad=False)
+    stopgrad_agent = make_agent(future_head_only_stopgrad=True)
+    act, obs, future_obs, delta_t = make_batch()
+
+    target = full_agent._encode_future_target(future_obs)
+    generator = torch.Generator().manual_seed(20260812)
+    action_noise = torch.randn(act.shape, generator=generator)
+    future_noise = torch.randn(target.shape, generator=generator)
+
+    full_loss, full_info = full_agent._compute_joint_mip_two_step_loss(
+        act,
+        obs,
+        delta_t,
+        future_obs,
+        action_noise=action_noise,
+        future_noise=future_noise,
+    )
+    stopgrad_loss, stopgrad_info = (
+        stopgrad_agent._compute_joint_mip_two_step_loss(
+            act,
+            obs,
+            delta_t,
+            future_obs,
+            action_noise=action_noise,
+            future_noise=future_noise,
+        )
+    )
+
+    # Detaching changes only backward connectivity, never forward values.
+    torch.testing.assert_close(full_loss, stopgrad_loss, rtol=0, atol=0)
+    for key in (
+        "_joint_action_term",
+        "_joint_weighted_future_loss",
+        "_joint_future_pred_0",
+        "_joint_future_pred_1",
+    ):
+        torch.testing.assert_close(
+            full_info[key], stopgrad_info[key], rtol=0, atol=0
+        )
+
+    action_loss = stopgrad_info["_joint_action_term"]
+    future_loss = stopgrad_info["_joint_weighted_future_loss"]
+    net = stopgrad_agent.flow_map.net
+    assert grad_norm(action_loss, net.decoder.parameters()) > 0
+    assert grad_norm(action_loss, stopgrad_agent.encoder.parameters()) > 0
+    assert grad_norm(future_loss, net.decoder.parameters()) == 0
+    assert grad_norm(future_loss, net.input_emb.parameters()) == 0
+    assert grad_norm(future_loss, net.future_input_emb.parameters()) == 0
+    assert grad_norm(future_loss, stopgrad_agent.encoder.parameters()) == 0
+    assert grad_norm(future_loss, net.future_head.parameters()) > 0
+    assert stopgrad_info["future_head_only_stopgrad"].item() == 1.0
+
+
+def test_head_only_stopgrad_update_keeps_future_head_trainable():
+    agent = make_agent(future_head_only_stopgrad=True)
+    act, obs, future_obs, delta_t = make_batch()
+    before = [parameter.detach().clone() for parameter in agent.flow_map.net.future_head.parameters()]
+    metrics = agent.update(act, obs, delta_t, future_obs=future_obs)
+    after = list(agent.flow_map.net.future_head.parameters())
+
+    assert any(not torch.equal(old, new) for old, new in zip(before, after, strict=True))
+    assert metrics["future_head_only_stopgrad"] == 1.0
 
 
 def test_zero_future_is_projected_and_prediction_depends_on_observation():

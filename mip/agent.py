@@ -10,8 +10,7 @@ from mip.flow_map import FlowMap
 from mip.interpolant import Interpolant
 from mip.losses import get_loss_fn
 from mip.network_utils import get_encoder, get_network
-from mip.samplers import get_sampler
-from mip.sigreg import SIGReg
+from mip.samplers import JointSamplerMode, JointSamplerResult, get_sampler, joint_mip_sampler
 from mip.torch_utils import report_parameters
 
 
@@ -86,19 +85,6 @@ class TrainingAgent:
 
         self._maybe_load_encoder_checkpoint()
         self._maybe_freeze_encoder()
-        self.sigreg = None
-        if getattr(config.optimization, "use_sigreg", False):
-            self.sigreg = SIGReg(
-                knots=getattr(config.optimization, "sigreg_knots", 17),
-                num_proj=getattr(config.optimization, "sigreg_num_proj", 1024),
-            ).to(config.optimization.device)
-            loguru.logger.info(
-                "SIGReg enabled "
-                f"(weight={config.optimization.sigreg_weight}, "
-                f"knots={config.optimization.sigreg_knots}, "
-                f"num_proj={config.optimization.sigreg_num_proj})"
-            )
-
         params = list(self.flow_map.parameters())
         if not config.optimization.freeze_encoder:
             params = list(self.encoder.parameters()) + params
@@ -160,9 +146,15 @@ class TrainingAgent:
         self.encoder_ema.eval()
         loguru.logger.info("Encoder frozen for training")
 
-    def _encode_future_target(self, future_obs: dict[str, torch.Tensor]) -> torch.Tensor:
-        if hasattr(self.encoder, "encode_rgb_features"):
-            return self.encoder.encode_rgb_features(future_obs)
+    def _encode_future_target(
+        self,
+        future_obs: dict[str, torch.Tensor],
+        *,
+        encoder: nn.Module | None = None,
+    ) -> torch.Tensor:
+        encoder = self.encoder if encoder is None else encoder
+        if hasattr(encoder, "encode_rgb_features"):
+            return encoder.encode_rgb_features(future_obs)
 
         encoder_input = future_obs
         reduce_sequence_output = False
@@ -170,15 +162,15 @@ class TrainingAgent:
             isinstance(future_obs, dict)
             and "state" in future_obs
             and future_obs["state"].dim() == 2
-            and hasattr(self.encoder, "To")
+            and hasattr(encoder, "To")
         ):
             encoder_input = {
                 "state": future_obs["state"].unsqueeze(1).expand(
-                    -1, self.encoder.To, -1
+                    -1, encoder.To, -1
                 )
             }
             reduce_sequence_output = True
-        if getattr(self.encoder, "use_seq", False):
+        if getattr(encoder, "use_seq", False):
             encoder_input = {}
             for k, v in future_obs.items():
                 # Single future frame comes in as:
@@ -202,7 +194,7 @@ class TrainingAgent:
             if (
                 isinstance(future_obs, dict)
                 and "prev_action" not in encoder_input
-                and getattr(self.encoder, "prev_action_dim", 0) > 0
+                and getattr(encoder, "prev_action_dim", 0) > 0
             ):
                 agent_pos = encoder_input.get("agent_pos")
                 if agent_pos is None:
@@ -211,12 +203,12 @@ class TrainingAgent:
                         "does not contain agent_pos to infer its batch/time shape"
                     )
                 encoder_input["prev_action"] = torch.zeros(
-                    (*agent_pos.shape[:-1], self.encoder.prev_action_dim),
+                    (*agent_pos.shape[:-1], encoder.prev_action_dim),
                     dtype=agent_pos.dtype,
                     device=agent_pos.device,
                 )
 
-        future_embed_target = self.encoder(encoder_input, None)
+        future_embed_target = encoder(encoder_input, None)
         if reduce_sequence_output and future_embed_target.dim() == 3:
             future_embed_target = future_embed_target.mean(dim=1)
         if future_embed_target.dim() == 3 and future_embed_target.shape[1] == 1:
@@ -436,6 +428,8 @@ class TrainingAgent:
         delta_t: torch.Tensor,
         future_obs: torch.Tensor | dict,
         obs_emb: torch.Tensor | None = None,
+        action_noise: torch.Tensor | None = None,
+        future_noise: torch.Tensor | None = None,
     ):
         if not getattr(self.config.optimization, "future_joint_mode", False):
             raise RuntimeError("Joint MIP loss requires future_joint_mode=true")
@@ -471,14 +465,53 @@ class TrainingAgent:
             future_embed_target = self._encode_future_target(future_obs)
         future_embed_target = future_embed_target.detach()
         future_embed_0 = torch.zeros_like(future_embed_target)
-        future_noise = torch.randn_like(future_embed_target)
+        if (action_noise is None) != (future_noise is None):
+            raise ValueError(
+                "action_noise and future_noise must be supplied together"
+            )
+        if future_noise is None:
+            future_noise = torch.randn_like(future_embed_target)
+        else:
+            future_noise = future_noise.to(
+                device=future_embed_target.device,
+                dtype=future_embed_target.dtype,
+            )
+            if future_noise.shape != future_embed_target.shape:
+                raise ValueError(
+                    "future_noise shape mismatch: "
+                    f"{tuple(future_noise.shape)} != "
+                    f"{tuple(future_embed_target.shape)}"
+                )
         future_embed_t = future_embed_target + (1 - self.config.optimization.t_two_step) * future_noise
         act_0 = torch.zeros_like(act)
-        act_noise = torch.randn_like(act)
-        act_t = act + (1 - self.config.optimization.t_two_step) * act_noise
+        if action_noise is None:
+            action_noise = torch.randn_like(act)
+        else:
+            action_noise = action_noise.to(device=act.device, dtype=act.dtype)
+            if action_noise.shape != act.shape:
+                raise ValueError(
+                    "action_noise shape mismatch: "
+                    f"{tuple(action_noise.shape)} != {tuple(act.shape)}"
+                )
+        act_t = act + (1 - self.config.optimization.t_two_step) * action_noise
 
+        head_only_stopgrad = bool(
+            getattr(
+                self.config.optimization,
+                "future_head_only_stopgrad",
+                False,
+            )
+        )
+        joint_forward_kwargs = (
+            {"stopgrad_future_trunk": True} if head_only_stopgrad else {}
+        )
         act_pred_0, future_embed_pred_0 = self.flow_map.net.joint_forward(
-            act_0, s, t, obs_emb, future_embed_0
+            act_0,
+            s,
+            t,
+            obs_emb,
+            future_embed_0,
+            **joint_forward_kwargs,
         )
         act_pred_1, future_embed_pred_1 = self.flow_map.net.joint_forward(
             act_t,
@@ -486,6 +519,7 @@ class TrainingAgent:
             torch.ones_like(t),
             obs_emb,
             future_embed_t,
+            **joint_forward_kwargs,
         )
         if future_embed_pred_0 is None or future_embed_pred_1 is None:
             raise RuntimeError(
@@ -546,6 +580,9 @@ class TrainingAgent:
             "loss_future_total": future_loss.detach(),
             "weighted_future_loss": weighted_future_loss.detach(),
             "loss_total": loss.detach(),
+            "future_head_only_stopgrad": torch.as_tensor(
+                float(head_only_stopgrad), device=loss.device
+            ),
             "_joint_action_term": action_term,
             "_joint_weighted_future_loss": weighted_future_loss,
             "_joint_future_input_0": future_embed_0,
@@ -710,17 +747,22 @@ class TrainingAgent:
         # Keep the two large groups separate so temporary diagnostic gradients do
         # not increase peak memory by materializing encoder and decoder gradients
         # at the same time.
+        if hasattr(net, "gradient_diagnostic_parameter_groups"):
+            trunk_groups = net.gradient_diagnostic_parameter_groups()
+        else:
+            # Preserve the legacy JEPA-Policy diagnostic and metric names.
+            trunk_groups = {
+                "shared": [
+                    parameter
+                    for parameter in net.decoder.parameters()
+                    if parameter.requires_grad
+                ]
+            }
         diagnostics.update(
             self._parameter_group_gradient_diagnostics(
                 action_term,
                 weighted_future_loss,
-                {
-                    "shared": [
-                        parameter
-                        for parameter in net.decoder.parameters()
-                        if parameter.requires_grad
-                    ]
-                },
+                trunk_groups,
             )
         )
         diagnostics.update(
@@ -740,6 +782,8 @@ class TrainingAgent:
         future_input_emb = getattr(net, "future_input_emb", None)
         future_type_emb = getattr(net, "future_type_emb", None)
         action_head = getattr(net, "head", None)
+        if action_head is None:
+            action_head = getattr(net, "action_head", None)
         future_head = getattr(net, "future_head", None)
         small_groups = {
             "future_input": (
@@ -820,6 +864,8 @@ class TrainingAgent:
         delta_t: torch.Tensor,
         future_obs: torch.Tensor | dict,
         seed: int,
+        action_noise: torch.Tensor | None = None,
+        future_noise: torch.Tensor | None = None,
     ) -> dict[str, float]:
         """Evaluate a fixed diagnostic batch with isolated Torch RNG state."""
         if not getattr(self.config.optimization, "use_future_embed_loss", False):
@@ -848,6 +894,8 @@ class TrainingAgent:
                             obs,
                             delta_t,
                             future_obs,
+                            action_noise=action_noise,
+                            future_noise=future_noise,
                         )
                     )
                     combined_info = {
@@ -928,8 +976,8 @@ class TrainingAgent:
     ):
         """Update the model parameters with a training batch."""
         self.optimizer.zero_grad(set_to_none=True)
-        obs_for_sigreg = self._copy_obs(obs)
         obs_for_future = self._copy_obs(obs)
+        cached_obs_emb = None
 
         joint_mode = bool(
             getattr(self.config.optimization, "future_joint_mode", False)
@@ -968,7 +1016,7 @@ class TrainingAgent:
                 info.pop("_joint_future_pred_0", None)
                 info.pop("_joint_future_pred_1", None)
                 info.pop("_joint_future_target", None)
-            info.pop("_joint_obs_emb", None)
+            cached_obs_emb = info.pop("_joint_obs_emb", None)
 
         use_direct_future_embed_loss = (
             not joint_mode
@@ -1017,7 +1065,8 @@ class TrainingAgent:
                 **loss_kwargs,
             )
 
-        cached_obs_emb = info.pop("_obs_emb_for_reuse", None)
+        if not joint_mode:
+            cached_obs_emb = info.pop("_obs_emb_for_reuse", None)
         if not joint_mode:
             action_term_for_diagnostics = loss
             weighted_future_loss_for_diagnostics = None
@@ -1061,25 +1110,6 @@ class TrainingAgent:
 
         if not torch.isfinite(loss):
             raise RuntimeError("Training loss became non-finite during training")
-
-        sigreg_loss = None
-        if self.sigreg is not None and self.config.optimization.sigreg_weight > 0:
-            # LeWorldModel-style SIGReg regularizes the encoder latent space itself,
-            # not the future head output. We therefore apply it directly to the
-            # current observation embeddings produced by the encoder.
-            obs_emb = self.encoder(obs_for_sigreg, None)
-            if obs_emb.dim() == 2:
-                sigreg_input = obs_emb.unsqueeze(0)
-            elif obs_emb.dim() == 3:
-                sigreg_input = obs_emb.transpose(0, 1)
-            else:
-                raise ValueError(
-                    f"Unsupported encoder embedding shape for SIGReg: {tuple(obs_emb.shape)}"
-                )
-            sigreg_loss = self.sigreg(sigreg_input)
-            if not torch.isfinite(sigreg_loss):
-                raise RuntimeError("SIGReg loss became non-finite during training")
-            loss = loss + self.config.optimization.sigreg_weight * sigreg_loss
 
         info["loss_total"] = loss.detach()
 
@@ -1126,8 +1156,6 @@ class TrainingAgent:
         }
         for key, value in info.items():
             out[key] = metric_value(value)
-        if sigreg_loss is not None:
-            out["loss_sigreg_encoder"] = metric_value(sigreg_loss)
         return out
 
 
@@ -1210,7 +1238,50 @@ class TrainingAgent:
                 )
             return self._compiled_sampler(config, flow_map, encoder, act_0, obs)
 
-    def save(self, path: str, training_state: dict = None):
+    def sample_joint(
+        self,
+        act_0: torch.Tensor,
+        obs: torch.Tensor | dict[str, torch.Tensor],
+        *,
+        sampler_invocation_id: str,
+        mode: JointSamplerMode,
+        use_ema: bool = True,
+    ) -> JointSamplerResult:
+        """Run one traceable Future4 sampler invocation.
+
+        This method is deliberately separate from ``sample`` so existing
+        training and evaluation callers retain their return types.  Audit mode
+        returns an owning CPU snapshot of pass-1 future prediction; selection
+        modes never expose or serialize a future output.
+        """
+
+        config = self.config.optimization
+        if config.loss_type != "mip":
+            raise ValueError("sample_joint is only supported by the MIP sampler")
+        if self.config.optimization.ema_rate < 1 and use_ema:
+            flow_map = self.flow_map_ema
+            encoder = self.encoder_ema
+        else:
+            flow_map = self.flow_map
+            encoder = self.encoder
+        with torch.inference_mode():
+            return joint_mip_sampler(
+                config,
+                flow_map,
+                encoder,
+                act_0,
+                obs,
+                sampler_invocation_id=sampler_invocation_id,
+                mode=mode,
+            )
+
+    def save(
+        self,
+        path: str,
+        training_state: dict = None,
+        *,
+        include_optimizer: bool = True,
+    ):
         """Save agent models to path.
 
         Args:
@@ -1223,8 +1294,9 @@ class TrainingAgent:
             "encoder": self.encoder.state_dict(),
             "encoder_ema": self.encoder_ema.state_dict(),
             "flow_map_ema": self.flow_map_ema.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
         }
+        if include_optimizer:
+            checkpoint["optimizer"] = self.optimizer.state_dict()
 
         # Add training state if provided
         if training_state is not None:

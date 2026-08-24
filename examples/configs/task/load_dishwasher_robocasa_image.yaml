@@ -1,8 +1,0 @@
-# @package task
-defaults:
-  - robocasa_base
-  - _self_
-
-env_name: "LoadDishwasher"
-dataset_path: "/mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/datasets/robocasa/v1.0/target/composite/LoadDishwasher/20250811/lerobot"
-max_episode_steps: 1800

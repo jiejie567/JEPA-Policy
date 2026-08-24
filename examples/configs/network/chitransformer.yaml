@@ -17,3 +17,4 @@ timestep_emb_type: "positional"  # Options: positional, sinusoidal, fourier
 n_future_tokens: 0
 use_causal_mask: false
 use_memory_mask: false
+block_action_from_future: false

@@ -9,7 +9,9 @@ Date: 2025-10-03
 from __future__ import annotations
 
 import math
+import sys
 from collections import defaultdict, deque
+from collections.abc import Mapping
 
 import av
 import dill
@@ -73,6 +75,43 @@ def aggregate(data, method="max"):
         raise NotImplementedError()
 
 
+def deep_copy_observation(value):
+    """Copy an observation tree without retaining mutable tensor/array storage."""
+
+    if isinstance(value, Mapping):
+        return {key: deep_copy_observation(child) for key, child in value.items()}
+    if isinstance(value, np.ndarray):
+        return np.copy(value)
+    torch_module = sys.modules.get("torch")
+    if torch_module is not None and torch_module.is_tensor(value):
+        return value.detach().to(device="cpu", copy=True).clone()
+    if isinstance(value, tuple):
+        return tuple(deep_copy_observation(child) for child in value)
+    if isinstance(value, list):
+        return [deep_copy_observation(child) for child in value]
+    if isinstance(value, (str, bytes, int, float, bool, type(None), np.generic)):
+        return value
+    raise TypeError(f"Unsupported mutable observation type: {type(value)!r}")
+
+
+def copy_resolved_observation(observation, keys):
+    """Copy only the resolved top-level camera/state keys."""
+
+    if not isinstance(observation, Mapping):
+        if keys not in (None, (), []):
+            raise TypeError("capture keys require a mapping observation")
+        return deep_copy_observation(observation)
+    if not keys:
+        raise ValueError("step capture requires non-empty resolved observation keys")
+    missing = sorted(set(keys).difference(observation))
+    if missing:
+        raise KeyError(f"capture observation is missing resolved keys: {missing}")
+    return {
+        key: deep_copy_observation(observation[key])
+        for key in keys
+    }
+
+
 def stack_last_n_obs(all_obs, n_steps):
     assert len(all_obs) > 0
     all_obs = list(all_obs)
@@ -118,10 +157,15 @@ class MultiStepWrapper(gym.Wrapper):
 
     def reset(self, **kwargs):
         """Resets the environment using kwargs."""
-        # Use stored seed if available (Gymnasium style), otherwise use provided seed
-        if hasattr(self, "_seed") and self._seed is not None:
-            kwargs["seed"] = self._seed
-            self._seed = None  # Use seed only once
+        # An explicit episode reset seed is authoritative.  In particular, do
+        # not let ``gym.Wrapper.__getattr__`` discover a construction-time
+        # ``_seed`` on a nested environment and overwrite it.  That made the
+        # first episode in every fresh persistent worker use the same base
+        # seed, so results depended on worker count and scheduling.
+        stored_seed = self.__dict__.get("_seed")
+        if kwargs.get("seed") is None and stored_seed is not None:
+            kwargs["seed"] = stored_seed
+            self._seed = None  # Use an explicitly local stored seed only once.
 
         result = super().reset(**kwargs)
 
@@ -140,8 +184,20 @@ class MultiStepWrapper(gym.Wrapper):
         obs = self._get_obs(self.n_obs_steps)
         return obs, info
 
-    def step(self, action):
-        """actions: (n_action_steps,) + action_shape."""
+    def _step_impl(self, action, capture_after_steps=None, capture_keys=None):
+        """Execute a chunk and optionally snapshot one primitive-step observation."""
+
+        if capture_after_steps is not None:
+            capture_after_steps = int(capture_after_steps)
+            if capture_after_steps < 1 or capture_after_steps > len(action):
+                raise ValueError("capture_after_steps must fall within the action chunk")
+        capture = {
+            "valid": False,
+            "observation": None,
+            "capture_env_step": None,
+            "primitive_actions_completed": 0,
+        }
+        decision_start_env_step = len(self.reward)
         for act in action:
             if len(self.done) > 0 and self.done[-1]:
                 # termination
@@ -165,6 +221,18 @@ class MultiStepWrapper(gym.Wrapper):
             self.done.append(done)
             self._add_info(info)
 
+            completed = len(self.reward) - decision_start_env_step
+            capture["primitive_actions_completed"] = completed
+            if capture_after_steps is not None and completed == capture_after_steps:
+                capture = {
+                    "valid": True,
+                    "observation": copy_resolved_observation(
+                        observation, capture_keys
+                    ),
+                    "capture_env_step": decision_start_env_step + completed,
+                    "primitive_actions_completed": completed,
+                }
+
         observation = self._get_obs(self.n_obs_steps)
         reward = aggregate(self.reward, self.reward_agg_method)
         done = aggregate(self.done, "max")
@@ -172,7 +240,35 @@ class MultiStepWrapper(gym.Wrapper):
         # Return in new Gymnasium 5-value format
         terminated = done
         truncated = False  # Truncation is already handled above
-        return observation, reward, terminated, truncated, info
+        result = observation, reward, terminated, truncated, info
+        return result, capture
+
+    def step(self, action):
+        """Execute ``n_action_steps`` while preserving the Gymnasium API."""
+
+        result, _capture = self._step_impl(action)
+        return result
+
+    def step_with_capture(self, action, *, capture_after_steps, capture_keys):
+        """Execute a chunk and return a deep-copied primitive-step capture."""
+
+        result, capture = self._step_impl(
+            action,
+            capture_after_steps=capture_after_steps,
+            capture_keys=tuple(capture_keys),
+        )
+        return (*result, capture)
+
+    def step_with_metadata(self, action):
+        """Execute a chunk and expose only non-observation execution metadata."""
+
+        result, bookkeeping = self._step_impl(action)
+        metadata = {
+            "primitive_actions_completed": int(
+                bookkeeping["primitive_actions_completed"]
+            )
+        }
+        return (*result, metadata)
 
     def _get_obs(self, n_steps=1):
         """Output (n_steps,) + obs_shape."""

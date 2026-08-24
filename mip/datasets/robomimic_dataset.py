@@ -29,6 +29,7 @@ from mip.dataset_utils import (
     RotationTransformer,
     SequenceSampler,
     dict_apply,
+    resolve_future_sample_positions,
 )
 from mip.datasets.base import BaseDataset
 from mip.mimicgen_utils import is_mimicgen_task
@@ -425,8 +426,12 @@ class RobomimicDataset(BaseDataset):
             if self.n_obs_steps is None:
                 raise ValueError("future_state_enabled requires n_obs_steps")
             future_frame_indices = [
-                min(self.n_obs_steps - 1 + future_step, sample["obs"].shape[0] - 1)
-                for future_step in self.future_steps
+                item.resolved_position
+                for item in resolve_future_sample_positions(
+                    self.n_obs_steps,
+                    self.future_steps,
+                    sample["obs"].shape[0],
+                )
             ]
             future_frames = [
                 sample["obs"][future_frame_idx].astype(np.float32)
@@ -598,8 +603,12 @@ class RobomimicImageDataset(BaseDataset):
             # The last observed frame is at n_obs_steps - 1. Predict one or more
             # future frames that are `future_steps` transitions ahead of it.
             future_frame_indices = [
-                min(self.n_obs_steps - 1 + future_step, sample["action"].shape[0] - 1)
-                for future_step in self.future_steps
+                item.resolved_position
+                for item in resolve_future_sample_positions(
+                    self.n_obs_steps,
+                    self.future_steps,
+                    sample["action"].shape[0],
+                )
             ]
 
         for key in self.rgb_keys:

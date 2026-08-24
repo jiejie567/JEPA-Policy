@@ -1,8 +1,0 @@
-# @package task
-defaults:
-  - robocasa_base
-  - _self_
-
-env_name: "StoreLeftoversInBowl"
-dataset_path: "/mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/datasets/robocasa/v1.0/target/composite/StoreLeftoversInBowl/20250813/lerobot"
-max_episode_steps: 2550

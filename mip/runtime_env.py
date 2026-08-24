@@ -7,8 +7,6 @@ from importlib import metadata
 
 from mip.libero_utils import is_libero_task
 from mip.mimicgen_utils import is_mimicgen_task
-from mip.robocasa_utils import is_robocasa_task
-from mip.robotwin_utils import is_robotwin_task
 
 
 _EXPECTED_VERSIONS = {
@@ -30,26 +28,12 @@ _EXPECTED_VERSIONS = {
         "robomimic": "0.3.0",
         "robosuite": "1.4.1",
     },
-    "robocasa": {
-        "lerobot": "0.3.3",
-        "mujoco": "3.3.1",
-        "numpy": "2.2.5",
-        "robosuite": "1.5.2",
-    },
-    "robotwin": {
-        "gymnasium": "0.29.1",
-        "mplib": "0.2.1",
-        "numpy": "1.26.4",
-        "sapien": "3.0.0b1",
-    },
 }
 
 _LAUNCHERS = {
     "robomimic": "tools/run_robomimic_train.sh",
     "libero": "tools/run_libero_train.sh",
     "mimicgen": "tools/run_mimicgen_train.sh",
-    "robocasa": "tools/run_robocasa_train.sh",
-    "robotwin": "tools/run_robotwin_train.sh",
 }
 
 
@@ -67,10 +51,6 @@ def validate_runtime_environment(task_config) -> None:
 
     if is_libero_task(task_config):
         benchmark = "libero"
-    elif is_robocasa_task(task_config):
-        benchmark = "robocasa"
-    elif is_robotwin_task(task_config):
-        benchmark = "robotwin"
     elif is_mimicgen_task(task_config):
         benchmark = "mimicgen"
     else:

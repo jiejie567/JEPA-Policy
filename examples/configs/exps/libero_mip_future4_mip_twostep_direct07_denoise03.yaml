@@ -1,7 +1,0 @@
-# @package _global_
-defaults:
-  - libero_mip_future4_mip_twostep
-  - _self_
-
-optimization:
-  future_t_two_step: 0.7

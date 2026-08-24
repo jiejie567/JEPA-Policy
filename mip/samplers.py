@@ -4,6 +4,9 @@ Author: Chaoyi Pan
 Date: 2025-10-03
 """
 
+from dataclasses import dataclass
+from typing import Literal
+
 import numpy as np
 import torch
 
@@ -11,6 +14,119 @@ from mip.config import OptimizationConfig
 from mip.encoders import BaseEncoder
 from mip.flow_map import FlowMap
 from mip.torch_utils import at_least_ndim
+
+
+JointSamplerMode = Literal[
+    "audit", "selection_optimized", "selection_full"
+]
+
+
+@dataclass(frozen=True)
+class JointSamplerTrace:
+    """Auditable call identity for one two-pass policy decision."""
+
+    sampler_invocation_id: str
+    pass_0_call_count: int = 1
+    pass_1_call_count: int = 1
+    extra_sampler_call_count: int = 0
+    second_future_projection_executed: bool = True
+
+
+@dataclass(frozen=True)
+class JointSamplerResult:
+    """Action and optional immutable CPU snapshot from one sampler call."""
+
+    action: torch.Tensor
+    future_pred_1: torch.Tensor | None
+    trace: JointSamplerTrace
+
+
+def _snapshot_prediction(tensor: torch.Tensor) -> torch.Tensor:
+    """Return an owning, contiguous CPU tensor without changing its dtype."""
+
+    return tensor.detach().to(device="cpu", copy=True).clone().contiguous()
+
+
+def joint_mip_sampler(
+    config: OptimizationConfig,
+    flow_map: FlowMap,
+    encoder: BaseEncoder,
+    act_0: torch.Tensor,
+    obs: torch.Tensor,
+    *,
+    sampler_invocation_id: str,
+    mode: JointSamplerMode,
+) -> JointSamplerResult:
+    """Run one joint two-pass sampler invocation for audit or selection."""
+
+    if mode not in {"audit", "selection_optimized", "selection_full"}:
+        raise ValueError(f"Unsupported joint sampler mode: {mode!r}")
+    use_joint = (
+        getattr(config, "use_future_embed_loss", False)
+        and getattr(config, "future_embed_loss_mode", "direct") == "mip_two_step"
+        and getattr(config, "future_joint_mode", False)
+        and getattr(flow_map.net, "n_future_tokens", 0) > 0
+    )
+    if not use_joint:
+        raise RuntimeError(
+            "Future rollout joint sampler requires Future4 joint mip_two_step"
+        )
+
+    batch_size = act_0.shape[0]
+    s = torch.zeros((batch_size,), device=act_0.device, dtype=act_0.dtype)
+    t = torch.full_like(s, float(config.t_two_step))
+    observation_embedding = encoder(obs, None)
+    action_0 = torch.zeros_like(act_0, device=act_0.device)
+    token_count = int(flow_map.net.n_future_tokens)
+    future_dim = int(flow_map.net.future_out_dim)
+    if token_count == 1:
+        future_0 = torch.zeros(
+            (batch_size, future_dim), device=act_0.device, dtype=act_0.dtype
+        )
+    else:
+        future_0 = torch.zeros(
+            (batch_size, token_count, future_dim),
+            device=act_0.device,
+            dtype=act_0.dtype,
+        )
+
+    action_pred_0, future_pred_0 = flow_map.net.joint_forward(
+        action_0, s, t, observation_embedding, future_0
+    )
+    if future_pred_0 is None:
+        raise RuntimeError("Joint sampler pass 0 returned no future prediction")
+
+    project_second_future = mode != "selection_optimized"
+    future_pred_1 = None
+    if project_second_future:
+        action_pred_1, raw_future_pred_1 = flow_map.net.joint_forward(
+            action_pred_0,
+            t,
+            torch.ones_like(t),
+            observation_embedding,
+            future_pred_0,
+        )
+        if raw_future_pred_1 is None:
+            raise RuntimeError("Joint sampler pass 1 returned no future prediction")
+        if mode == "audit":
+            future_pred_1 = _snapshot_prediction(raw_future_pred_1)
+    else:
+        action_pred_1 = flow_map.net.joint_action_forward(
+            action_pred_0,
+            t,
+            torch.ones_like(t),
+            observation_embedding,
+            future_pred_0,
+        )
+
+    return JointSamplerResult(
+        action=action_pred_1,
+        future_pred_1=future_pred_1,
+        trace=JointSamplerTrace(
+            sampler_invocation_id=str(sampler_invocation_id),
+            second_future_projection_executed=project_second_future,
+        ),
+    )
 
 
 def get_default_step_list(loss_type: str):

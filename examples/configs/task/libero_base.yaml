@@ -8,7 +8,7 @@ abs_action: false
 dataset_repo: null
 dataset_path: null
 
-libero_root: /mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/third_party/LIBERO
+libero_root: ${oc.env:LIBERO_ROOT,third_party/LIBERO}
 libero_camera_size: 128
 
 obs_steps: 2

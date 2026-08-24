@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mip"
+name = "jepa-policy"
 version = "0.1.0"
-description = "MIP: Minimum Iterative Policy"
+description = "JEPA Policy: paired action and future-representation prediction for robot imitation learning"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

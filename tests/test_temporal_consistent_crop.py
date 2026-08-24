@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 import torch
 from hydra import compose, initialize_config_dir
-from omegaconf import OmegaConf
 
 from mip.encoders import (
     CropRandomizer,
@@ -306,82 +305,6 @@ def test_future_target_path_samples_one_crop_per_camera_only_once():
         torch.equal(coordinates[key].cpu(), encoder.last_crop_params[key])
         for key in encoder.rgb_keys
     )
-
-
-def test_four_crop_ablation_configs_only_vary_future_crop_and_run_name():
-    config_dir = str((Path(__file__).parents[1] / "examples" / "configs").resolve())
-    names = [
-        "exps/mug_mug_baseline_nocrop_seed42",
-        "exps/mug_mug_baseline_crop116_temporal_seed42",
-        "exps/mug_mug_future4_ratio010_nocrop_seed42",
-        "exps/mug_mug_future4_ratio010_crop116_temporal_seed42",
-    ]
-    with initialize_config_dir(version_base=None, config_dir=config_dir):
-        configs = [compose(config_name=name) for name in names]
-
-    for config in configs:
-        assert config.optimization.seed == 42
-        assert config.optimization.batch_size == 256
-        assert config.optimization.gradient_steps == 300000
-        assert config.optimization.t_two_step == 0.9
-        assert config.task.obs_steps == 2
-        assert config.task.horizon == 16
-        assert config.task.act_steps == 8
-        assert config.task.future_state_steps == 4
-        assert config.optimization.future_state_loss_ratio == 0.1
-        assert config.log.eval_freq == 10000
-        assert config.log.eval_episodes == 40
-        assert config.eval.parallel_rollout_workers == 20
-        assert config.eval.rollout_seed == 12345
-
-    allowed_differences = {
-        "optimization.use_future_embed_loss",
-        "optimization.future_joint_mode",
-        "network.n_future_tokens",
-        "task.future_state_enabled",
-        "task.crop_shape",
-        "task.crop_ratio",
-        "task.random_crop",
-        "task.crop_mode",
-        "task.temporal_consistent_crop",
-        "log.exp_name",
-        "log.log_dir",
-    }
-
-    def flattened(config):
-        result = {}
-
-        def visit(prefix, value):
-            if isinstance(value, dict):
-                for key, item in value.items():
-                    visit(f"{prefix}.{key}" if prefix else key, item)
-            else:
-                result[prefix] = value
-
-        visit("", OmegaConf.to_container(config, resolve=True))
-        return {
-            key: value for key, value in result.items() if key not in allowed_differences
-        }
-
-    reference = flattened(configs[0])
-    assert all(flattened(config) == reference for config in configs[1:])
-
-    assert configs[0].task.crop_shape is None
-    assert configs[2].task.crop_shape is None
-    assert configs[1].task.crop_shape is None
-    assert configs[3].task.crop_shape is None
-    assert configs[0].task.crop_ratio is None
-    assert configs[2].task.crop_ratio is None
-    assert configs[1].task.crop_ratio == 0.9
-    assert configs[3].task.crop_ratio == 0.9
-    assert resolve_crop_shape(
-        tuple(configs[1].task.shape_meta.obs.agentview_rgb.shape),
-        crop_shape=configs[1].task.crop_shape,
-        crop_ratio=configs[1].task.crop_ratio,
-        key="agentview_rgb",
-    ) == (116, 116)
-    assert configs[1].task.temporal_consistent_crop is True
-    assert configs[3].task.temporal_consistent_crop is True
 
 
 def test_dataset_task_configs_resolve_expected_90_percent_crops():

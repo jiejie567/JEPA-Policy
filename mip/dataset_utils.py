@@ -9,6 +9,7 @@ import math
 import numbers
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import cached_property
 
 import numba
@@ -704,6 +705,54 @@ class ReplayBuffer:
 # ------------------------------ SequenceSampler ------------------------------#
 # -----------------------------------------------------------------------------#
 
+
+@dataclass(frozen=True)
+class FutureSamplePosition:
+    """A logical future offset resolved inside a sampled sequence."""
+
+    logical_horizon: int
+    logical_position: int
+    resolved_position: int
+    was_clamped: bool
+
+
+@dataclass(frozen=True)
+class ResolvedSequencePosition:
+    """A sample-relative position mapped back to the source replay buffer."""
+
+    sample_index: int
+    sample_position: int
+    source_index: int
+    was_padded: bool
+
+
+def resolve_future_sample_positions(
+    n_obs_steps: int,
+    future_steps: list[int] | tuple[int, ...],
+    sample_length: int,
+) -> tuple[FutureSamplePosition, ...]:
+    """Resolve future offsets exactly as the training datasets do."""
+
+    if n_obs_steps <= 0:
+        raise ValueError("n_obs_steps must be positive")
+    if sample_length <= 0:
+        raise ValueError("sample_length must be positive")
+    resolved = []
+    for future_step in future_steps:
+        if future_step < 0:
+            raise ValueError("future steps must be non-negative")
+        logical = n_obs_steps - 1 + int(future_step)
+        position = min(logical, sample_length - 1)
+        resolved.append(
+            FutureSamplePosition(
+                logical_horizon=int(future_step),
+                logical_position=logical,
+                resolved_position=position,
+                was_clamped=position != logical,
+            )
+        )
+    return tuple(resolved)
+
 # Original implemetation: https://github.com/real-stanford/diffusion_policy
 # Observation Horizon: To|n_obs_steps
 # Action Horizon: Ta|n_action_steps
@@ -845,6 +894,34 @@ class SequenceSampler:
                 data[sample_start_idx:sample_end_idx] = sample
             result[key] = data
         return result
+
+    def resolve_sample_position(
+        self, idx: int, sample_position: int
+    ) -> ResolvedSequencePosition:
+        """Map one returned sample position to its original replay index."""
+
+        if not 0 <= idx < len(self.indices):
+            raise IndexError(f"sample index out of range: {idx}")
+        if not 0 <= sample_position < self.sequence_length:
+            raise IndexError(f"sample position out of range: {sample_position}")
+        buffer_start, buffer_end, sample_start, sample_end = (
+            int(value) for value in self.indices[idx]
+        )
+        if sample_position < sample_start:
+            source_index = buffer_start
+            was_padded = True
+        elif sample_position >= sample_end:
+            source_index = buffer_end - 1
+            was_padded = True
+        else:
+            source_index = buffer_start + sample_position - sample_start
+            was_padded = False
+        return ResolvedSequencePosition(
+            sample_index=int(idx),
+            sample_position=int(sample_position),
+            source_index=source_index,
+            was_padded=was_padded,
+        )
 
 
 # -----------------------------------------------------------------------------#

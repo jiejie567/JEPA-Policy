@@ -8,7 +8,7 @@ env_type: "mimicgen"
 obs_type: "image"
 dataset_repo: null
 dataset_filename: null
-dataset_path: "/mnt/data_nas/ykj_jepa_policy/code/JEPA-Policy/datasets/mimicgen/core/three_piece_assembly_d1/three_piece_assembly_d1.hdf5"
+dataset_path: "${oc.env:MIMICGEN_DATA_ROOT,datasets/mimicgen/core}/three_piece_assembly_d1/three_piece_assembly_d1.hdf5"
 abs_action: false
 max_episode_steps: 500
 render_obs_key: "agentview_image"

@@ -38,6 +38,20 @@ def test_pool_step_can_address_only_active_workers():
         pool.step(["a", "b"], worker_indices=[1, 1])
 
 
+def test_pool_reset_can_resume_only_missing_episode_workers():
+    pool = object.__new__(PersistentImageRolloutPool)
+    pool.num_workers = 3
+    pool.started = True
+    pool.connections = [_Connection(i) for i in range(3)]
+    pool.start = lambda: None
+    pool._recv = lambda connection, worker_id: ("ok", worker_id)
+
+    assert pool.reset([101, 303], worker_indices=[0, 2]) == [0, 2]
+    assert pool.connections[0].sent == [("reset", {"seed": 101})]
+    assert pool.connections[1].sent == []
+    assert pool.connections[2].sent == [("reset", {"seed": 303})]
+
+
 class _IdentityNormalizer:
     def normalize(self, value):
         return value
@@ -158,3 +172,30 @@ def test_parallel_eval_does_not_treat_positive_reward_as_success():
 
     assert metrics["mean_reward_1"] == pytest.approx(1.0)
     assert metrics["mean_success_1"] == pytest.approx(0.0)
+
+
+def test_parallel_eval_uses_positive_reward_as_libero_success():
+    config = SimpleNamespace(
+        task=SimpleNamespace(
+            obs_type="image", save_video=False, max_episode_steps=8,
+            obs_steps=2, horizon=4, act_dim=1, act_steps=8,
+            abs_action=False, env_name="mug_mug", env_type="libero",
+        ),
+        log=SimpleNamespace(save_video=False, eval_episodes=2),
+        optimization=SimpleNamespace(device="cpu", future_joint_mode=False),
+        eval=SimpleNamespace(rollout_seed=12345),
+    )
+    dataset = SimpleNamespace(
+        normalizer={
+            "obs": {"state": _IdentityNormalizer()},
+            "action": _IdentityNormalizer(),
+        }
+    )
+
+    metrics = parallel_image_eval(
+        config, _RewardOnlyPool(), dataset, _Agent(), num_steps=1
+    )
+
+    assert metrics["mean_reward_1"] == pytest.approx(1.0)
+    assert metrics["mean_success_1"] == pytest.approx(1.0)
+    assert metrics["reward_success_disagreements_1"] == 0
