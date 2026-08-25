@@ -1,0 +1,47 @@
+name: mug_mug_image
+
+shape_meta: &shape_meta
+  obs:
+    agentview_rgb:
+      shape: [3, 128, 128]
+      type: rgb
+    eye_in_hand_rgb:
+      shape: [3, 128, 128]
+      type: rgb
+    joint_states:
+      shape: [7]
+      type: low_dim
+    gripper_states:
+      shape: [2]
+      type: low_dim
+  action:
+    shape: [7]
+
+dataset_path: &dataset_path ${oc.env:LIBERO_DATA_ROOT}/LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate_demo.hdf5
+libero_root: &libero_root ${oc.env:LIBERO_ROOT}
+
+env_runner:
+  _target_: diffusion_policy.env_runner.libero_image_runner.LiberoImageRunner
+  libero_root: *libero_root
+  bddl_file: ${oc.env:LIBERO_ROOT}/libero/libero/bddl_files/libero_10/LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate.bddl
+  init_states_file: ${oc.env:LIBERO_ROOT}/libero/libero/init_files/libero_10/LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate.pruned_init
+  shape_meta: *shape_meta
+  n_test: 40
+  n_test_vis: 0
+  test_start_seed: 12345
+  max_steps: 300
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  n_envs: 20
+
+dataset:
+  _target_: diffusion_policy.dataset.libero_replay_image_dataset.LiberoReplayImageDataset
+  shape_meta: *shape_meta
+  dataset_path: *dataset_path
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1+${n_latency_steps}'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  n_obs_steps: ${dataset_obs_steps}
+  use_cache: True
+  seed: 42
+  val_ratio: 0.02

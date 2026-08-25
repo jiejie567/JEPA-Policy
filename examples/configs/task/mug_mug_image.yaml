@@ -1,0 +1,43 @@
+# @package task
+defaults:
+  - libero_base
+  - _self_
+
+env_name: "mug_mug"
+obs_type: "image"
+libero_benchmark_name: "libero_10"
+libero_task_name: "LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate"
+dataset_filename: "libero_10/LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate_demo.hdf5"
+
+max_episode_steps: 300
+horizon: 16
+act_dim: 7
+obs_dim: 384
+render_obs_key: "agentview_rgb"
+num_envs: 2
+
+shape_meta:
+  action:
+    shape:
+      - 7
+  obs:
+    agentview_rgb:
+      shape:
+        - 3
+        - 128
+        - 128
+      type: rgb
+    eye_in_hand_rgb:
+      shape:
+        - 3
+        - 128
+        - 128
+      type: rgb
+    joint_states:
+      shape:
+        - 7
+      type: low_dim
+    gripper_states:
+      shape:
+        - 2
+      type: low_dim

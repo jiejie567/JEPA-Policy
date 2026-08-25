@@ -1,0 +1,21 @@
+network_type: chitransformer_dino_aux
+
+encoder_type: dinov2_image
+dino_model_name: dinov2_vits14
+dino_embed_dim: 384
+dino_out_dim: 768
+
+emb_dim: 384
+num_layers: 8
+dropout: 0.0
+timestep_emb_dim: 128
+n_heads: 6
+attn_dropout: 0.1
+n_cond_layers: 0
+timestep_emb_type: positional
+
+num_encoder_layers: 2
+encoder_dropout: 0.0
+rgb_model_name: resnet18
+use_seq: true
+keep_horizon_dims: true

@@ -1,0 +1,29 @@
+# @package _global_
+defaults:
+  - /optimization: default
+  - /network: chitransformer
+  - /task: square_ph_image
+  - /log: default
+  - /eval: default
+  - _self_
+
+mode: train
+
+optimization:
+  loss_type: mip
+  t_two_step: 0.9
+  batch_size: 256
+  gradient_steps: 300000
+  use_future_embed_loss: false
+  future_joint_mode: false
+
+network:
+  emb_dim: 384
+  n_future_tokens: 0
+
+task:
+  future_state_enabled: false
+
+log:
+  project: jepa-policy
+  group: "${task.env_type}_${task.env_name}_mip_action_only"

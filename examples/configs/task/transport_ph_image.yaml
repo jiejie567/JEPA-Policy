@@ -1,0 +1,60 @@
+# @package task
+defaults:
+  - robomimic_base
+  - _self_
+
+env_name: "transport"
+obs_type: "image"
+env_type: "ph"
+
+# HuggingFace dataset configuration - auto-downloads from the repository
+dataset_filename: "robomimic/transport/ph/image.hdf5"
+
+# Alternative: Use original repo with demo dataset (requires local processing)
+# dataset_repo: "amandlek/robomimic"
+# dataset_filename: "v1.5/transport/ph/demo_v15.hdf5"
+
+max_episode_steps: 700
+render_obs_key: "robot1_eye_in_hand_image"
+
+# Required keys
+horizon: 10
+act_dim: 20  # abs_action converts two 7D arms to two 10D actions
+
+shape_meta:
+  action:
+    shape:
+      - 20
+  obs:
+    robot1_eye_in_hand_image:
+      shape:
+        - 3
+        - 84
+        - 84
+      type: rgb
+    robot0_eef_pos:
+      shape:
+        - 3
+      type: low_dim
+    robot0_eef_quat:
+      shape:
+        - 4
+      type: low_dim
+    robot0_gripper_qpos:
+      shape:
+        - 2
+      type: low_dim
+    robot1_eef_pos:
+      shape:
+        - 3
+      type: low_dim
+    robot1_eef_quat:
+      shape:
+        - 4
+      type: low_dim
+    robot1_gripper_qpos:
+      shape:
+        - 2
+      type: low_dim
+
+num_envs: 4

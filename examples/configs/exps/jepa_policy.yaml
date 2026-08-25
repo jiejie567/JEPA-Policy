@@ -1,0 +1,41 @@
+# @package _global_
+defaults:
+  - /optimization: default
+  - /network: chitransformer
+  - /task: square_ph_image
+  - /log: default
+  - /eval: default
+  - _self_
+
+mode: train
+
+optimization:
+  loss_type: mip
+  t_two_step: 0.9
+  future_t_two_step: 0.9
+  batch_size: 256
+  gradient_steps: 300000
+  use_future_embed_loss: true
+  future_embed_loss_mode: mip_two_step
+  future_joint_mode: true
+  future_state_loss_mode: ratio
+  future_state_loss_ratio: 0.1
+  future_state_loss_weight_min: 0.000001
+  future_state_loss_weight_max: 0.1
+
+network:
+  emb_dim: 384
+  n_future_tokens: 1
+  use_causal_mask: false
+  use_memory_mask: false
+  block_action_from_future: false
+
+task:
+  future_state_enabled: true
+  future_state_steps: 4
+  future_state_steps_list: [4]
+  future_target_type: embedding
+
+log:
+  project: jepa-policy
+  group: "${task.env_type}_${task.env_name}_jepa_policy"

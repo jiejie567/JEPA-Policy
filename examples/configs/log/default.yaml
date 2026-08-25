@@ -1,0 +1,21 @@
+# @package log
+defaults:
+  - _self_
+
+log_dir: "logs"
+wandb_mode: "disabled"
+project: "jepa-policy"
+entity: "jepa-policy"
+group: "default"
+exp_name: "default"
+eval_freq: 20000
+log_freq: 1000
+save_freq: 20000
+eval_episodes: 50
+save_video: False
+gradient_diagnostic_freq: 0
+validation_freq: 10000
+validation_batch_size: 16
+validation_seed: 12345
+validation_delta_t: 1.0
+snapshot_steps: []
