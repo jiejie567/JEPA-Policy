@@ -22,7 +22,9 @@ JEPA Policy trains a robot policy to predict an expert action chunk together wit
 JEPA Policy requires Python 3.12 and PyTorch. The default environment supports robomimic:
 
 ```bash
-git clone https://anonymous.4open.science/r/JEPAPolicy2701.git
+curl -L https://anonymous.4open.science/api/repo/JEPAPolicy2701/zip -o JEPAPolicy2701.zip
+mkdir JEPA-Policy
+unzip JEPAPolicy2701.zip -d JEPA-Policy
 cd JEPA-Policy
 uv sync --extra dev
 ```
