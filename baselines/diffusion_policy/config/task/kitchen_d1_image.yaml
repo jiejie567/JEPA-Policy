@@ -1,0 +1,48 @@
+name: kitchen_d1_image
+
+shape_meta: &shape_meta
+  obs:
+    agentview_image: {shape: [3, 84, 84], type: rgb}
+    robot0_eye_in_hand_image: {shape: [3, 84, 84], type: rgb}
+    robot0_eef_pos: {shape: [3], type: low_dim}
+    robot0_eef_quat: {shape: [4], type: low_dim}
+    robot0_gripper_qpos: {shape: [2], type: low_dim}
+  action: {shape: [7]}
+
+dataset_path: &dataset_path ${oc.env:MIMICGEN_DATA_ROOT}/kitchen_d1/kitchen_d1.hdf5
+
+env_runner:
+  _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
+  dataset_path: *dataset_path
+  shape_meta: *shape_meta
+  n_train: 0
+  n_train_vis: 0
+  n_test: 40
+  n_test_vis: 0
+  test_start_seed: 12345
+  max_steps: 800
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  render_obs_key: agentview_image
+  fps: 10
+  crf: 22
+  past_action: ${past_action_visible}
+  abs_action: false
+  register_mimicgen: true
+  tqdm_interval_sec: 1.0
+  n_envs: 20
+
+dataset:
+  _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
+  shape_meta: *shape_meta
+  dataset_path: *dataset_path
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1+${n_latency_steps}'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  n_obs_steps: ${dataset_obs_steps}
+  abs_action: false
+  rotation_rep: rotation_6d
+  use_legacy_normalizer: false
+  use_cache: true
+  seed: 42
+  val_ratio: 0.02

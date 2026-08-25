@@ -73,6 +73,14 @@ uv run examples/train_robomimic.py \
   optimization.gradient_steps=300000
 ```
 
+## Paper baselines
+
+The exact action-only MIP preset and the aligned Diffusion Policy recipe used
+for the main comparison are documented in [`baselines/`](baselines/README.md).
+The Diffusion Policy material pins the upstream commit and supplies only the
+task configurations and small protocol overlay needed to reproduce the paper;
+it does not duplicate the third-party repository.
+
 ## Supported benchmarks
 
 The repository includes configurations for standard robomimic image/state tasks and the image tasks used to validate JEPA Policy:
@@ -117,6 +125,18 @@ uv run pytest -q \
   tests/test_future_loss_ratio.py \
   tests/test_temporal_consistent_crop.py
 ```
+
+## Anonymous review export
+
+To produce a history-free review archive from the exact current commit:
+
+```bash
+bash tools/export_anonymous.sh /path/to/JEPA-Policy-anonymous.tar.gz
+```
+
+Set `ANON_REPOSITORY_URL` to replace the public clone URL with the anonymous
+review URL. The exporter refuses to package known author identifiers or
+machine-specific paths.
 
 ## Acknowledgements
 

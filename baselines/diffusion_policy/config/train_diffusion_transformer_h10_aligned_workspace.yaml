@@ -1,0 +1,129 @@
+defaults:
+  - _self_
+  - task: square_image_abs
+
+name: train_diffusion_transformer_h10_aligned
+_target_: diffusion_policy.workspace.train_diffusion_transformer_h10_aligned_workspace.TrainDiffusionTransformerH10AlignedWorkspace
+
+task_name: ${task.name}
+shape_meta: ${task.shape_meta}
+exp_name: aligned_h10
+
+horizon: 10
+n_obs_steps: 2
+n_action_steps: 8
+n_latency_steps: 0
+dataset_obs_steps: ${n_obs_steps}
+past_action_visible: false
+obs_as_cond: true
+
+policy:
+  _target_: diffusion_policy.policy.diffusion_transformer_aligned_image_policy.AlignedDiffusionTransformerHybridImagePolicy
+  shape_meta: ${shape_meta}
+  noise_scheduler:
+    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+    num_train_timesteps: 100
+    beta_start: 0.0001
+    beta_end: 0.02
+    beta_schedule: squaredcos_cap_v2
+    variance_type: fixed_small
+    clip_sample: true
+    prediction_type: epsilon
+  horizon: ${horizon}
+  n_action_steps: ${n_action_steps}
+  n_obs_steps: ${n_obs_steps}
+  num_inference_steps: 100
+  crop_shape: [76, 76]
+  obs_encoder_group_norm: true
+  eval_fixed_crop: true
+  temporal_consistent_crop: true
+  n_layer: 8
+  n_cond_layers: 0
+  n_head: 6
+  n_emb: 384
+  p_drop_emb: 0.0
+  p_drop_attn: 0.1
+  causal_attn: false
+  time_as_cond: true
+  obs_as_cond: ${obs_as_cond}
+
+ema:
+  _target_: diffusion_policy.model.diffusion.ema_model.EMAModel
+  update_after_step: 0
+  inv_gamma: 1.0
+  power: 0.75
+  min_value: 0.995
+  max_value: 0.995
+
+dataloader:
+  batch_size: 256
+  num_workers: 8
+  shuffle: true
+  pin_memory: true
+  persistent_workers: true
+
+val_dataloader:
+  batch_size: 16
+  num_workers: 2
+  shuffle: false
+  pin_memory: true
+  persistent_workers: false
+
+optimizer:
+  transformer_weight_decay: 1.0e-5
+  obs_encoder_weight_decay: 1.0e-5
+  learning_rate: 1.0e-4
+  betas: [0.9, 0.999]
+
+training:
+  device: cuda:0
+  seed: 42
+  debug: false
+  resume: false
+  lr_scheduler: cosine
+  lr_warmup_steps: 0
+  num_epochs: 10000
+  max_global_steps: 300000
+  gradient_accumulate_every: 1
+  grad_clip_norm: 10.0
+  use_ema: true
+  rollout_every_steps: 10000
+  checkpoint_every_steps: 10000
+  val_every_steps: 10000
+  sample_every_steps: 10000
+  max_val_steps: null
+  tqdm_interval_sec: 1.0
+
+logging:
+  project: diffusion_policy_jepa_comparison
+  resume: false
+  mode: online
+  name: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+  tags:
+    - dp_transformer
+    - aligned_h10
+    - ${task_name}
+  id: null
+  group: dp_transformer_h10_aligned
+
+checkpoint:
+  topk:
+    monitor_key: test_mean_score
+    mode: max
+    k: 5
+    format_str: epoch={epoch:04d}-step={optimizer_step:06d}-test_mean_score={test_mean_score:.3f}.ckpt
+  save_last_ckpt: true
+  save_last_snapshot: false
+
+multi_run:
+  run_dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+  wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+
+hydra:
+  job:
+    override_dirname: ${name}
+  run:
+    dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+  sweep:
+    dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+    subdir: ${hydra.job.num}
