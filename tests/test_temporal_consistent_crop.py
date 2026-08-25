@@ -4,13 +4,13 @@ from unittest.mock import patch
 import torch
 from hydra import compose, initialize_config_dir
 
-from mip.encoders import (
+from jepa_policy.encoders import (
     CropRandomizer,
     MultiImageObsEncoder,
     resolve_crop_shape,
     sample_random_image_crops,
 )
-from mip.networks.chitfm import ChiTransformer
+from jepa_policy.networks.chitfm import ChiTransformer
 
 
 def _shape_meta():
@@ -249,7 +249,7 @@ def test_independent_random_crop_can_sample_exact_bottom_right():
     def final_valid_index(high, size, device=None, **_kwargs):
         return torch.full(size, high - 1, device=device, dtype=torch.long)
 
-    with patch("mip.encoders.torch.randint", side_effect=final_valid_index):
+    with patch("jepa_policy.encoders.torch.randint", side_effect=final_valid_index):
         cropped, coordinates = sample_random_image_crops(
             image,
             crop_height=116,

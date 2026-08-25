@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from examples.train_robomimic import parallel_image_eval
-from mip.envs.persistent_image_rollout import PersistentImageRolloutPool
+from jepa_policy.envs.persistent_image_rollout import PersistentImageRolloutPool
 
 
 class _Connection:

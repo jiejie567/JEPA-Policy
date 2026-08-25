@@ -32,11 +32,11 @@ def _rollout_worker(config_dict, worker_id, episode_ids, result_queue):
 
         import torch
 
-        from mip.agent import TrainingAgent
-        from mip.datasets.robot_dataset import make_dataset
-        from mip.envs.robot_env import make_vec_env
-        from mip.eval_rng import get_rollout_seed
-        from mip.torch_utils import set_seed
+        from jepa_policy.agent import TrainingAgent
+        from jepa_policy.datasets.robot_dataset import make_dataset
+        from jepa_policy.envs.robot_env import make_vec_env
+        from jepa_policy.eval_rng import get_rollout_seed
+        from jepa_policy.torch_utils import set_seed
 
         config = OmegaConf.create(config_dict)
         config.task.num_envs = 1

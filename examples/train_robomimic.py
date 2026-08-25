@@ -33,20 +33,20 @@ if os.getenv("MIP_DISABLE_CUDNN", "0") == "1":
 
 torch.set_float32_matmul_precision("high")
 
-from mip.agent import TrainingAgent
-from mip.config import Config
-from mip.dataset_utils import loop_dataloader
-from mip.datasets.robot_dataset import make_dataset
-from mip.envs.robot_env import make_vec_env
-from mip.envs.persistent_image_rollout import PersistentImageRolloutPool
-from mip.eval_rng import get_episode_seeds, get_rollout_seed, isolated_torch_rng
-from mip.libero_utils import is_libero_task
-from mip.logger import Logger, compute_average_metrics, update_best_metrics
-from mip.photometric_augmentation import augment_robot_rgb_batch
-from mip.runtime_env import validate_runtime_environment
-from mip.samplers import get_default_step_list
-from mip.scheduler import WarmupAnnealingScheduler
-from mip.torch_utils import set_seed
+from jepa_policy.agent import TrainingAgent
+from jepa_policy.config import Config
+from jepa_policy.dataset_utils import loop_dataloader
+from jepa_policy.datasets.robot_dataset import make_dataset
+from jepa_policy.envs.robot_env import make_vec_env
+from jepa_policy.envs.persistent_image_rollout import PersistentImageRolloutPool
+from jepa_policy.eval_rng import get_episode_seeds, get_rollout_seed, isolated_torch_rng
+from jepa_policy.libero_utils import is_libero_task
+from jepa_policy.logger import Logger, compute_average_metrics, update_best_metrics
+from jepa_policy.photometric_augmentation import augment_robot_rgb_batch
+from jepa_policy.runtime_env import validate_runtime_environment
+from jepa_policy.samplers import get_default_step_list
+from jepa_policy.scheduler import WarmupAnnealingScheduler
+from jepa_policy.torch_utils import set_seed
 
 
 def isolate_rollout_rng(function):

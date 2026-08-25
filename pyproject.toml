@@ -110,13 +110,13 @@ line-ending = "auto"
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["mip"]
+known-first-party = ["jepa_policy"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["mip"]
+packages = ["jepa_policy"]
 
 [dependency-groups]
 dev = [

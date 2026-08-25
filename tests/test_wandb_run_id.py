@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from mip.logger import _wandb_run_id_from_env
+from jepa_policy.logger import _wandb_run_id_from_env
 
 
 @pytest.mark.parametrize("value", [None, "", "   "])

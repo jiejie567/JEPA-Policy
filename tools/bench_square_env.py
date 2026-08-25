@@ -7,7 +7,7 @@ import time
 import numpy as np
 from omegaconf import OmegaConf
 
-from mip.envs.robomimic.robomimic_env import make_vec_env
+from jepa_policy.envs.robomimic.robomimic_env import make_vec_env
 
 
 def reset_envs(envs):

@@ -4,10 +4,10 @@ from types import SimpleNamespace
 import torch
 import torch.nn as nn
 
-from mip.agent import TrainingAgent
-from mip.flow_map import FlowMap
-from mip.networks.chitfm import ChiTransformer
-from mip.samplers import mip_sampler
+from jepa_policy.agent import TrainingAgent
+from jepa_policy.flow_map import FlowMap
+from jepa_policy.networks.chitfm import ChiTransformer
+from jepa_policy.samplers import mip_sampler
 
 
 class TinyEncoder(nn.Module):

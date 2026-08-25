@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from mip.eval_rng import get_episode_seeds, get_rollout_seed, isolated_torch_rng
+from jepa_policy.eval_rng import get_episode_seeds, get_rollout_seed, isolated_torch_rng
 
 
 def test_isolated_torch_rng_is_reproducible_and_restores_global_state():

@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mip import runtime_env
+from jepa_policy import runtime_env
 
 
 @pytest.mark.parametrize(

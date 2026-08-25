@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import torch
 
-from mip.agent import TrainingAgent
-from mip.losses import mip_loss
+from jepa_policy.agent import TrainingAgent
+from jepa_policy.losses import mip_loss
 
 
 class DummyEncoder:
