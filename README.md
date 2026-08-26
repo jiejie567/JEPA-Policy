@@ -128,6 +128,14 @@ uv run pytest -q \
   tests/test_temporal_consistent_crop.py
 ```
 
+## Physical-robot success protocol
+
+An episode is counted as successful only when the operator-confirmed task goal
+is completed within the fixed, task-specific action-chunk budget. Every method
+uses the same budget for a given task. Wall-clock duration, inference latency,
+and control-loop timing do not affect the success label; latency is reported as
+a separate efficiency measurement.
+
 ## Acknowledgements
 
 This codebase extends [Minimum Flow Policies](https://github.com/simchowitzlabpublic/much-ado-about-noising) and uses robomimic, robosuite, LIBERO, and MimicGen.
