@@ -1,0 +1,39 @@
+_target_: prometheus.nodes.robots.arx5.resolve_robot
+
+# Match the current PrometheusV2 ARX5 profile and ROS domain split.
+id: arx5
+control_domain_id: 11
+sensor_domain_id: 12
+
+robot:
+  state_publish_hz: 120
+  action_space: abs_qpos
+  gripper_width_m: 0.082
+  gripper_open_readout: -3.4
+  left_gripper_open_readout: -3.2866
+  right_gripper_open_readout: -3.27058
+  can:
+    left: ${oc.env:ARX5_LEFT_CAN,can3}
+    right: ${oc.env:ARX5_RIGHT_CAN,can1}
+
+cameras:
+  capture_hz: 30
+  capture_width: 640
+  capture_height: 480
+  publish_hz: 30
+  ir: false
+  # The training cache uses one direct INTER_AREA resize from 640x480 to
+  # 128x128. Resize once in each camera worker so every policy receives the
+  # checkpoint-native image without the old 640x480 -> 320x240 -> 128x128
+  # two-stage path. The smaller ROS payload also avoids the native-resolution
+  # cross-camera backlog observed on this host.
+  prepub_resize: [128, 128]
+  camera_info: false
+  serial_no:
+    base_0: ${oc.env:BASE_CAMERA_SERIAL}
+    left_wrist_0: ${oc.env:LEFT_WRIST_CAMERA_SERIAL}
+    right_wrist_0: ${oc.env:RIGHT_WRIST_CAMERA_SERIAL}
+
+# JEPA consumes RGB and robot state only; do not start Xense in this rollout.
+tactile:
+  serial_no: {}

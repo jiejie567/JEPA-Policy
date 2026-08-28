@@ -1,0 +1,8 @@
+# @package task
+defaults:
+  - arx_r5_base
+  - _self_
+
+env_name: plate_grape
+arx_r5_task_name: plate_grape
+dataset_path: ${oc.env:PROMETHEUS_DATASET_ROOT,datasets}/plate_grape

@@ -1,0 +1,8 @@
+# @package task
+defaults:
+  - arx_r5_base
+  - _self_
+
+env_name: cup_upright
+arx_r5_task_name: cup_upright
+dataset_path: ${oc.env:PROMETHEUS_DATASET_ROOT,datasets}/cup_upright

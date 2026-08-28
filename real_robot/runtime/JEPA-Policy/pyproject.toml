@@ -1,0 +1,126 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mip"
+version = "0.1.0"
+description = "MIP: Minimum Iterative Policy"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "tyro",
+    "seaborn",
+    "tqdm",
+    "wandb",
+    "imageio-ffmpeg",
+    "moviepy",
+    "mediapy",
+    "av",
+    "dill",
+    "hydra-core",
+    "hydra-submitit-launcher",
+    "loguru",
+    "ipdb",
+    "opencv-python-headless",
+    "imageio",
+    "gymnasium",
+    "torch",
+    "torchvision",
+    "numba",
+    "scikit-image",
+    "pygame",
+    "shapely",
+    "pymunk<7.0.0",
+    "robomimic @ git+https://github.com/ARISE-Initiative/robomimic.git@v0.4",
+    "robosuite @ git+https://github.com/ARISE-Initiative/robosuite.git@v1.5.1",
+    "h5py",
+    "zarr",
+    "numcodecs",
+    "huggingface-hub",
+    "imagecodecs",
+    "datasets>=4.1.1",
+    "einops>=0.8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pytest>=8.0.0",
+]
+
+[tool.ruff]
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.11+
+target-version = "py311"
+
+[tool.ruff.lint]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
+# Plus Google style conventions
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "D",    # pydocstyle (Google style docstrings)
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "D100",   # Missing docstring in public module
+    "D104",   # Missing docstring in public package
+    "D107",   # Missing docstring in `__init__`
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D105",   # Missing docstring in magic method
+    "D205",   # 1 blank line required between summary line and description
+    "D415",   # First line should end with a period
+    "D417",   # Missing argument descriptions in docstring
+    "N802",   # Function name should be lowercase
+    "N803",   # Argument name should be lowercase
+    "N806",   # Variable in function should be lowercase (often used for test variables)
+    "N812",   # Lowercase imported as non-lowercase
+    "B007",   # Loop control variable not used within loop body
+    "B008",   # Function call in default argument
+    "SIM102", # Use single if statement instead of nested
+    "SIM105", # Use contextlib.suppress instead of try-except-pass
+    "SIM117", # Multiple with statements
+    "UP007",  # Non-PEP604 annotation union
+    "UP038",  # Use X | Y in isinstance call instead of (X, Y)
+]
+
+[tool.ruff.format]
+# Use Google style formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["mip"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["mip"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.13.2",
+    "pytest>=8.0.0",
+    "pre-commit>=3.0.0",
+]

@@ -1,0 +1,33 @@
+_target_: prometheus.policy.jepa_policy.MIPPolicy
+
+inputs:
+  anchor: base_0_color
+  slop_ms: 60.0
+  window_size: 2
+  stride: 3
+  # Match JEPA startup behavior: discard roughly the first two seconds from
+  # every RealSense so auto-exposure and auto-white-balance can settle.
+  startup_camera_frames: 60
+  wait_latest: true
+  # Give the asynchronous RGB/state decoders time to reach the same raw
+  # timestamps. The 60 ms alignment limit remains strict after the wait.
+  wait_latest_timeout_ms: 100.0
+  # Keep the 60 ms alignment requirement strict, but tolerate transient
+  # synchronized camera publish pauses before declaring the stream stalled.
+  observation_barrier_timeout_ms: 1000.0
+  camera_streams:
+    base_image: base_0_color
+    left_wrist_image: left_wrist_0_color
+    right_wrist_image: right_wrist_0_color
+  state_stream: robot_state
+
+inference:
+  project_root: ${oc.env:JEPA_POLICY_ROOT,../JEPA-Policy}
+  config_name: exps/arx_r5_mip_baseline
+  task: ???
+  checkpoint: ???
+  stats_path: ???
+  device: cuda
+  num_steps: 2
+
+action_hz: 10.0

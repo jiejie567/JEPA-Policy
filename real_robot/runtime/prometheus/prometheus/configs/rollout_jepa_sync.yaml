@@ -1,0 +1,89 @@
+defaults:
+  - robot: x5_1_fm
+  - task: default
+  - policy: jepa
+  - _self_
+
+user:
+  task_id: default
+  inference_root: ${oc.env:PROMETHEUS_RUN_ROOT,outputs/real_robot}
+  steps: 500
+  # Keep the first hardware run non-actuating until stream/order checks pass.
+  dry_run: true
+  model_config_name: exps/arx_r5_mip_future4_ratio010
+  model_task: ???
+  checkpoint: ???
+  stats_path: ???
+
+task:
+  id: ${user.task_id}
+
+run:
+  id: ${now:%Y%m%d_%H%M%S_%f}
+  output_dir: ${user.inference_root}/${task.id}/${run.id}
+  runtime_dir: ${run.output_dir}/runtime
+  wait_ready_timeout_s: 5.0
+  steps: ${user.steps}
+
+robot:
+  robot:
+    action_space: abs_qpos
+    state_publish_hz: 30
+
+policy:
+  inference:
+    config_name: ${user.model_config_name}
+    task: ${user.model_task}
+    checkpoint: ${user.checkpoint}
+    stats_path: ${user.stats_path}
+
+hardware:
+  name: hardware
+  mode: owned
+  sensors: auto
+  streams: auto
+
+data:
+  name: data
+  mode: owned
+  history: 64
+  bridge:
+    enabled: true
+    name: ros_data
+    wait_all_streams: true
+    qos_depth: 10
+    stamp_source: recv
+  numpy:
+    enabled: true
+    history: 64
+    recording:
+      enabled: false
+  recording:
+    enabled: true
+    output_dir: ${run.output_dir}/data
+    episode_id: "0000"
+    queue_size: 4096
+    fps: 30.0
+    default_event_value: 0
+    enable_plots: true
+
+policy_session:
+  name: policy
+  mode: owned
+
+scheduler:
+  _target_: prometheus.policy.scheduler.ActionScheduler
+  dry_run: ${user.dry_run}
+  wait: true
+  timeout_s: 3.0
+  history: 1024
+  filters: []
+
+workflow:
+  stop_on_done: true
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/rollout_jepa_sync/${run.id}

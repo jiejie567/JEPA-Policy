@@ -1,0 +1,100 @@
+defaults:
+  - rollout_jepa_sync
+  - _self_
+
+# Deployment-only safety overlay. The packaged rollout remains unchanged.
+user:
+  action_steps_per_chunk: 1
+  # Cabinet fallback. Launchers override this with the selected task profile.
+  max_delta: [0.080, 0.161, 0.187, 0.164, 0.092, 0.080, 0.020, 0.058, 0.141, 0.182, 0.158, 0.067, 0.061, 0.030]
+  stable_delta: ${user.max_delta}
+  stable_delta_change: ${user.max_delta}
+  hold_dimensions_enabled: false
+  hold_dimensions: [0]
+  startup_action_guard_enabled: false
+  startup_inactive_dimensions: [7, 8, 9, 10, 11, 12]
+  startup_first_action_dimensions: []
+  startup_inactive_right_max_displacement: 0.040
+  startup_first_action_max_delta: ${user.max_delta}
+
+robot:
+  cameras:
+    # Record capture-native frames inside each RealSense worker. Only the
+    # 128x128 policy stream crosses ROS.
+    original_color_recording:
+      enabled: ${data.recording.enabled}
+      output_dir: ${run.output_dir}/camera_original
+  robot:
+    # A dry-run must not move the arms during process cleanup.
+    reset_home_on_close: false
+
+scheduler:
+  filters:
+    - _target_: prometheus.policy.scheduler.BoundsGuard
+      name: raw_bounds_guard
+      # X5 SDK joint_pos_min/max. The driver subtracts its deployed 0.005 m
+      # closing bias before clipping, hence 0.087 model-space -> 0.082 m.
+      # Permit only a small raw-model gripper undershoot caused by
+      # de-normalization. StatefulDynamicsFilter below clips both grippers
+      # back to the physical 0.0 lower bound before any command is sent.
+      lower: [-3.14, -0.05, -0.10, -1.60, -1.57, -2.00, -0.005, -3.14, -0.05, -0.10, -1.60, -1.57, -2.00, -0.005]
+      upper: [2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087, 2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087]
+      # Network de-normalization can miss an SDK arm boundary by a few mrad.
+      # Permit at most 5 mm beyond the already widened raw gripper envelope;
+      # StatefulDynamicsFilter still clips dispatched gripper commands to 0.
+      # The filtered guard below remains strict for every dispatched command.
+      clip_tolerance: [0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005]
+    - _target_: prometheus.policy.scheduler.StatefulDynamicsFilter
+      # Same measured-qpos/qvel rebasing used by the DP deployment. For
+      # pen_insert the launchers supply rounded-up training p95 velocity and
+      # acceleration envelopes shared by all three checkpoints.
+      name: stateful_dynamics
+      max_delta: ${user.stable_delta}
+      max_delta_change: ${user.stable_delta_change}
+      lower: [-3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0, -3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0]
+      upper: [2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087, 2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087]
+    - _target_: prometheus.policy.scheduler.HoldDimensionsFilter
+      enabled: ${user.hold_dimensions_enabled}
+      dimensions: ${user.hold_dimensions}
+    - _target_: prometheus.policy.scheduler.MaxDeltaFilter
+      name: max_delta_filter
+      # Per 0.1 s command: task 99.9th-percentile demonstrated delta + 10%.
+      # Every new policy chunk is rebased to current_action from measured qpos.
+      max_delta: ${user.max_delta}
+      require_previous: true
+      report_clipping: true
+    - _target_: prometheus.policy.scheduler.BoundsGuard
+      name: filtered_bounds_guard
+      lower: [-3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0, -3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0]
+      upper: [2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087, 2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087]
+
+workflow:
+  paper_eval:
+    recovery_seconds: 30
+    max_episodes: 0
+  action_steps_per_chunk: ${user.action_steps_per_chunk}
+  startup_action_guard:
+    enabled: ${user.startup_action_guard_enabled}
+    chunk_count: 1
+    # Launchers may use this for task-semantic startup checks. pen_insert
+    # disables the pre-filter startup guard and relies on absolute bounds plus
+    # measured-state p95 dynamics clipping in the scheduler.
+    inactive_dimensions: ${user.startup_inactive_dimensions}
+    max_displacement: ${user.startup_inactive_right_max_displacement}
+    first_action_max_delta: ${user.startup_first_action_max_delta}
+    first_action_dimensions: ${user.startup_first_action_dimensions}
+  # Real launchers enable the relevant ordered reset explicitly. Defaults stay
+  # motion-free so dry-run and direct config use cannot reset unexpectedly.
+  ensure_home_before_rollout: false
+  startup_home_state_stream: robot_state
+  startup_home_target: [0.0, 0.0, 0.0, -0.03, 0.0, 0.0, 0.082, 0.0, 0.0, 0.0, -0.03, 0.0, 0.0, 0.082]
+  startup_home_tolerance: [0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.005, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.005]
+  startup_home_settle_s: 0.2
+  reset_home_on_success: false
+  reset_home_on_interrupt: false
+  reset_home_on_error: false
+  reset_home_timeout_s: 30.0
+
+hydra:
+  run:
+    dir: outputs/hydra/rollout_jepa_safe_sync/${run.id}

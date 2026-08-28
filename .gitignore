@@ -1,4 +1,4 @@
-# Python
+# Python and build outputs
 __pycache__/
 *.py[cod]
 *.pyo
@@ -6,77 +6,49 @@ __pycache__/
 .Python
 *.egg
 *.egg-info/
-dist/
-build/
 .eggs/
+/build/
+/dist/
+
+# Environments and package managers
 .venv/
 venv/
-env/
-
-# uv
+/env/
 .uv/
 
-# Jupyter
+# Tests, notebooks, and tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 *.ipynb
-
-# Data & checkpoints
-*.h5
-*.hdf5
-*.pkl
-*.pt
-*.pth
-checkpoints/
-outputs/
-logs/
-wandb/
-data/
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Claude
-.claude/
-
-# Runtime / experiment outputs
-logs/
-outputs/
-wandb/
-checkpoints/
 .tmp/
-.pytest_cache/
 
-# Python cache
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
+# Local configuration
+.env
+.env.*
+!.env.example
 
-# Models / checkpoints
-*.pt
-*.pth
-*.ckpt
-*.safetensors
-
-# Datasets / artifacts
-data/
-datasets/
-diagnostic_results/
+# Experiment outputs and external artifacts
+/data/
+/datasets/
+/diagnostic_results/
+/logs/
+/outputs/
+/runs/
+/wandb/
+/checkpoints/
+/third_party/
 *.h5
 *.hdf5
 *.zarr
 *.pkl
 *.npy
 *.npz
+*.pt
+*.pth
+*.ckpt
+*.safetensors
 
 # Archives
 *.zip
@@ -85,18 +57,13 @@ diagnostic_results/
 *.tgz
 *.7z
 
-# Build / env
-dist/
-build/
-third_party/
-*.egg-info/
-.venv/
-venv/
-env/
-.uv/
-
-# IDE / OS
+# Editors and operating systems
+.claude/
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db

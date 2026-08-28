@@ -1,0 +1,12 @@
+name: prometheusv3
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.12
+  - hydra-core>=1.3,<1.4
+  - msgpack-python>=1.0
+  - omegaconf>=2.3,<2.4
+  - numpy>=1.26
+  - pytest>=8
+  - websockets>=12
+  - pip

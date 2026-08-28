@@ -1,0 +1,8 @@
+# @package task
+defaults:
+  - arx_r5_base
+  - _self_
+
+env_name: cabinet
+arx_r5_task_name: cabinet
+dataset_path: ${oc.env:PROMETHEUS_DATASET_ROOT,datasets}/cabinet

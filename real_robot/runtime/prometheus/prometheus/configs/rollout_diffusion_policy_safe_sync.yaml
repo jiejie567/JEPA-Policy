@@ -1,0 +1,108 @@
+defaults:
+  - rollout_diffusion_policy_sync
+  - _self_
+
+# Deployment-only safety overlay. The packaged rollout remains unchanged.
+user:
+  action_steps_per_chunk: 1
+  max_delta: [0.080, 0.161, 0.187, 0.164, 0.092, 0.080, 0.020, 0.058, 0.141, 0.182, 0.158, 0.067, 0.061, 0.030]
+  stable_delta: ${user.max_delta}
+  stable_delta_change: ${user.max_delta}
+  hold_dimensions_enabled: false
+  hold_dimensions: [0]
+  gripper_close_lead_steps: 0
+  gripper_close_lead_min_delta: 0.01
+  gripper_close_height_gate_enabled: false
+  gripper_close_max_height_m: 0.013
+  startup_action_guard_enabled: false
+  startup_inactive_dimensions: [7, 8, 9, 10, 11, 12]
+  startup_first_action_dimensions: []
+  startup_inactive_right_max_displacement: 0.040
+  startup_first_action_max_delta: ${user.max_delta}
+
+robot:
+  cameras:
+    original_color_recording:
+      enabled: ${data.recording.enabled}
+      output_dir: ${run.output_dir}/camera_original
+  robot:
+    reset_home_on_close: false
+
+scheduler:
+  filters:
+    - _target_: prometheus.policy.scheduler.BoundsGuard
+      name: raw_bounds_guard
+      # Raw network output may undershoot a closed gripper by a sub-mm
+      # de-normalization residual. The following dynamics filter clips it to
+      # the physical 0.0 lower bound before dispatch.
+      lower: [-3.14, -0.05, -0.10, -1.60, -1.57, -2.00, -0.005, -3.14, -0.05, -0.10, -1.60, -1.57, -2.00, -0.005]
+      upper: [2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087, 2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087]
+      # Clip <=5 mrad arm overshoots before dynamics filtering. Permit at most
+      # 5 mm beyond the already widened raw gripper envelope; the dynamics
+      # filter still clips dispatched gripper commands to the physical range.
+      clip_tolerance: [0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005]
+    - _target_: prometheus.policy.scheduler.GripperCloseLeadFilter
+      lead_steps: ${user.gripper_close_lead_steps}
+      gripper_indices: [6, 13]
+      min_close_delta: ${user.gripper_close_lead_min_delta}
+    - _target_: prometheus.policy.scheduler.StatefulDynamicsFilter
+      max_delta: ${user.stable_delta}
+      max_delta_change: ${user.stable_delta_change}
+      lower: [-3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0, -3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0]
+      upper: [2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087, 2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087]
+    - _target_: prometheus.policy.scheduler.HoldDimensionsFilter
+      enabled: ${user.hold_dimensions_enabled}
+      dimensions: ${user.hold_dimensions}
+    - _target_: prometheus.policy.scheduler.GripperCloseHeightGateFilter
+      enabled: ${user.gripper_close_height_gate_enabled}
+      max_close_height_m: ${user.gripper_close_max_height_m}
+      gripper_indices: [6, 13]
+      arm_starts: [0, 7]
+      release_opening: 0.06
+      min_close_delta: 0.005
+      request_replan: true
+      robot_model: X5
+      urdf_path: ${oc.env:ARX5_X5_URDF}
+    - _target_: prometheus.policy.scheduler.BoundsGuard
+      name: filtered_bounds_guard
+      lower: [-3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0, -3.14, -0.05, -0.10, -1.60, -1.57, -2.00, 0.0]
+      upper: [2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087, 2.618, 3.50, 3.20, 1.55, 1.57, 2.00, 0.087]
+    - _target_: prometheus.policy.scheduler.MaxDeltaFilter
+      name: max_delta_filter
+      max_delta: ${user.max_delta}
+      require_previous: true
+      report_clipping: true
+
+workflow:
+  paper_eval:
+    recovery_seconds: 30
+    max_episodes: 0
+  action_steps_per_chunk: ${user.action_steps_per_chunk}
+  startup_action_guard:
+    enabled: ${user.startup_action_guard_enabled}
+    chunk_count: 1
+    # pen_insert disables the pre-filter startup guard and relies on absolute
+    # bounds plus measured-state p95 dynamics clipping in the scheduler.
+    inactive_dimensions: ${user.startup_inactive_dimensions}
+    max_displacement: ${user.startup_inactive_right_max_displacement}
+    first_action_max_delta: ${user.startup_first_action_max_delta}
+    first_action_dimensions: ${user.startup_first_action_dimensions}
+  # Wait longer than one 30Hz camera period before the next synchronous
+  # inference. This prevents the next chunk from using an image captured before
+  # the preceding chunk's final command.
+  post_chunk_observation_delay_s: 0.04
+  # Real launchers turn these on. Defaults remain motion-free for dry-run.
+  ensure_home_before_rollout: false
+  startup_home_state_stream: robot_state
+  startup_home_target: [0.0, 0.0, 0.0, -0.03, 0.0, 0.0, 0.082, 0.0, 0.0, 0.0, -0.03, 0.0, 0.0, 0.082]
+  startup_home_tolerance: [0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.005, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.005]
+  startup_home_settle_s: 0.2
+  reset_home_on_guard_rejection: false
+  reset_home_on_success: false
+  reset_home_on_interrupt: false
+  reset_home_on_error: false
+  reset_home_timeout_s: 30.0
+
+hydra:
+  run:
+    dir: outputs/hydra/rollout_diffusion_policy_safe_sync/${run.id}

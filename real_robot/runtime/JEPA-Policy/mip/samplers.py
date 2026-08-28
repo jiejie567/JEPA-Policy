@@ -1,0 +1,290 @@
+"""Sampler for different training objectives.
+
+Author: Chaoyi Pan
+Date: 2025-10-03
+"""
+
+from dataclasses import dataclass
+from typing import Literal
+
+import numpy as np
+import torch
+
+from mip.config import OptimizationConfig
+from mip.encoders import BaseEncoder
+from mip.flow_map import FlowMap
+from mip.torch_utils import at_least_ndim
+
+
+JointSamplerMode = Literal[
+    "audit", "selection_optimized", "selection_full"
+]
+
+
+@dataclass(frozen=True)
+class JointSamplerTrace:
+    """Auditable call identity for one two-pass policy decision."""
+
+    sampler_invocation_id: str
+    pass_0_call_count: int = 1
+    pass_1_call_count: int = 1
+    extra_sampler_call_count: int = 0
+    second_future_projection_executed: bool = True
+
+
+@dataclass(frozen=True)
+class JointSamplerResult:
+    """Action and optional immutable CPU snapshot from one sampler call."""
+
+    action: torch.Tensor
+    future_pred_1: torch.Tensor | None
+    trace: JointSamplerTrace
+
+
+def _snapshot_prediction(tensor: torch.Tensor) -> torch.Tensor:
+    """Return an owning, contiguous CPU tensor without changing its dtype."""
+
+    return tensor.detach().to(device="cpu", copy=True).clone().contiguous()
+
+
+def joint_mip_sampler(
+    config: OptimizationConfig,
+    flow_map: FlowMap,
+    encoder: BaseEncoder,
+    act_0: torch.Tensor,
+    obs: torch.Tensor,
+    *,
+    sampler_invocation_id: str,
+    mode: JointSamplerMode,
+) -> JointSamplerResult:
+    """Run one joint two-pass sampler invocation for audit or selection."""
+
+    if mode not in {"audit", "selection_optimized", "selection_full"}:
+        raise ValueError(f"Unsupported joint sampler mode: {mode!r}")
+    use_joint = (
+        getattr(config, "use_future_embed_loss", False)
+        and getattr(config, "future_embed_loss_mode", "direct") == "mip_two_step"
+        and getattr(config, "future_joint_mode", False)
+        and getattr(flow_map.net, "n_future_tokens", 0) > 0
+    )
+    if not use_joint:
+        raise RuntimeError(
+            "Future rollout joint sampler requires Future4 joint mip_two_step"
+        )
+
+    batch_size = act_0.shape[0]
+    s = torch.zeros((batch_size,), device=act_0.device, dtype=act_0.dtype)
+    t = torch.full_like(s, float(config.t_two_step))
+    observation_embedding = encoder(obs, None)
+    action_0 = torch.zeros_like(act_0, device=act_0.device)
+    token_count = int(flow_map.net.n_future_tokens)
+    future_dim = int(flow_map.net.future_out_dim)
+    if token_count == 1:
+        future_0 = torch.zeros(
+            (batch_size, future_dim), device=act_0.device, dtype=act_0.dtype
+        )
+    else:
+        future_0 = torch.zeros(
+            (batch_size, token_count, future_dim),
+            device=act_0.device,
+            dtype=act_0.dtype,
+        )
+
+    action_pred_0, future_pred_0 = flow_map.net.joint_forward(
+        action_0, s, t, observation_embedding, future_0
+    )
+    if future_pred_0 is None:
+        raise RuntimeError("Joint sampler pass 0 returned no future prediction")
+
+    project_second_future = mode != "selection_optimized"
+    future_pred_1 = None
+    if project_second_future:
+        action_pred_1, raw_future_pred_1 = flow_map.net.joint_forward(
+            action_pred_0,
+            t,
+            torch.ones_like(t),
+            observation_embedding,
+            future_pred_0,
+        )
+        if raw_future_pred_1 is None:
+            raise RuntimeError("Joint sampler pass 1 returned no future prediction")
+        if mode == "audit":
+            future_pred_1 = _snapshot_prediction(raw_future_pred_1)
+    else:
+        action_pred_1 = flow_map.net.joint_action_forward(
+            action_pred_0,
+            t,
+            torch.ones_like(t),
+            observation_embedding,
+            future_pred_0,
+        )
+
+    return JointSamplerResult(
+        action=action_pred_1,
+        future_pred_1=future_pred_1,
+        trace=JointSamplerTrace(
+            sampler_invocation_id=str(sampler_invocation_id),
+            second_future_projection_executed=project_second_future,
+        ),
+    )
+
+
+def get_default_step_list(loss_type: str):
+    if loss_type in ["flow", "ctm", "lmd"]:
+        return 3 ** np.arange(2, -1, -1)
+    elif loss_type in ["regression", "mip", "tsd"]:
+        return [1]
+    else:
+        raise NotImplementedError(f"Loss type {loss_type} not implemented.")
+
+
+def get_sampler(loss_type: str):
+    if loss_type == "flow":
+        return ode_sampler
+    elif loss_type == "regression":
+        return regression_sampler
+    elif loss_type in ["tsd", "mip"]:
+        return mip_sampler
+    elif loss_type in ["lmd", "ctm"]:
+        return flow_map_sampler
+    else:
+        raise NotImplementedError(f"Loss type {loss_type} not implemented.")
+
+
+def ode_sampler(
+    config: OptimizationConfig,
+    flow_map: FlowMap,
+    encoder: BaseEncoder,
+    act_0: torch.Tensor,
+    obs: torch.Tensor,
+):
+    num_steps = config.num_steps
+    sample_mode = config.sample_mode
+    t_schedule = np.linspace(0, 1, num_steps + 1)
+    if sample_mode == "stochastic":
+        act_s = torch.randn_like(act_0, device=act_0.device)
+    else:
+        act_s = torch.zeros_like(act_0, device=act_0.device)
+    obs_emb = encoder(obs, None)
+    bs = act_0.shape[0]
+    for i in range(num_steps):
+        s_val = t_schedule[i]
+        t_val = t_schedule[i + 1]
+        s = torch.full((bs,), s_val, device=act_0.device)
+        t = torch.full((bs,), t_val, device=act_0.device)
+        b_s = flow_map.get_velocity(s, act_s, obs_emb)
+        s_expanded = at_least_ndim(s, act_s.dim())
+        t_expanded = at_least_ndim(t, act_s.dim())
+        act_s = act_s + b_s * (t_expanded - s_expanded)
+    act = act_s
+    return act
+
+
+def flow_map_sampler(
+    config: OptimizationConfig,
+    flow_map: FlowMap,
+    encoder: BaseEncoder,
+    act_0: torch.Tensor,
+    obs: torch.Tensor,
+):
+    """This function is designed for flow map sampler, i.e. for the distilled shortcut model.
+
+    Args:
+        config (OptimizationConfig): the configuration
+        flow_map (FlowMap): the flow map
+        encoder (BaseEncoder): the encoder
+        act_0 (torch.Tensor): the initial action
+        obs (torch.Tensor): the observation
+
+    Returns:
+        torch.Tensor: the sampled action
+    """
+    num_steps = config.num_steps
+    sample_mode = config.sample_mode
+    t_schedule = np.linspace(0, 1, num_steps + 1)
+    if sample_mode == "stochastic":
+        act_s = torch.randn_like(act_0, device=act_0.device)
+    else:
+        act_s = torch.zeros_like(act_0, device=act_0.device)
+    obs_emb = encoder(obs, None)
+    bs = act_0.shape[0]
+    for i in range(num_steps):
+        s_val = t_schedule[i]
+        t_val = t_schedule[i + 1]
+        s = torch.full((bs,), s_val, device=act_0.device)
+        t = torch.full((bs,), t_val, device=act_0.device)
+        act_s = flow_map(s, t, act_s, obs_emb)
+    act = act_s
+    return act
+
+
+def regression_sampler(
+    config: OptimizationConfig,
+    flow_map: FlowMap,
+    encoder: BaseEncoder,
+    act_0: torch.Tensor,
+    obs: torch.Tensor,
+):
+    bs = act_0.shape[0]
+    act_zeros = torch.zeros_like(act_0, device=act_0.device)
+    t = torch.zeros(bs, device=act_0.device)
+    obs_emb = encoder(obs, None)
+    act = flow_map.get_velocity(t, act_zeros, obs_emb)
+    return act
+
+
+def mip_sampler(
+    config: OptimizationConfig,
+    flow_map: FlowMap,
+    encoder: BaseEncoder,
+    act_0: torch.Tensor,
+    obs: torch.Tensor,
+    return_future: bool = False,
+):
+    bs = act_0.shape[0]
+    s = torch.zeros((bs,), device=act_0.device)
+    t = torch.full((bs,), config.t_two_step, device=act_0.device)
+
+    obs_emb = encoder(obs, None)
+
+    act_0 = torch.zeros_like(act_0, device=act_0.device)
+    use_future_mip_two_step = (
+        getattr(config, "use_future_embed_loss", False)
+        and getattr(config, "future_embed_loss_mode", "direct") == "mip_two_step"
+        and getattr(config, "future_joint_mode", False)
+        and getattr(flow_map.net, "n_future_tokens", 0) > 0
+    )
+
+    if use_future_mip_two_step:
+        n_future_tokens = flow_map.net.n_future_tokens
+        future_out_dim = flow_map.net.future_out_dim
+        if n_future_tokens == 1:
+            future_0 = torch.zeros((bs, future_out_dim), device=act_0.device)
+        else:
+            future_0 = torch.zeros(
+                (bs, n_future_tokens, future_out_dim), device=act_0.device
+            )
+
+        act_pred_0, future_pred_0 = flow_map.net.joint_forward(
+            act_0,
+            s,
+            t,
+            obs_emb,
+            future_0,
+        )
+        act_pred_1, future_pred_1 = flow_map.net.joint_forward(
+            act_pred_0,
+            t,
+            torch.ones_like(t),
+            obs_emb,
+            future_pred_0,
+        )
+    else:
+        act_pred_0 = flow_map.get_velocity(s, act_0, obs_emb)
+        act_pred_1 = flow_map.get_velocity(t, act_pred_0, obs_emb)
+        future_pred_1 = None
+
+    act = act_pred_1
+    if return_future:
+        return act, future_pred_1
+    return act
