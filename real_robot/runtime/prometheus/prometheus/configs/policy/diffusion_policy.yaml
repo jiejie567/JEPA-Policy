@@ -1,0 +1,41 @@
+_target_: prometheus.policy.diffusion_policy.DiffusionPolicy
+
+inputs:
+  anchor: base_0_color
+  slop_ms: 60.0
+  window_size: 2
+  stride: 3
+  # Match JEPA startup behavior: discard roughly the first two seconds from
+  # every RealSense so auto-exposure and auto-white-balance can settle.
+  startup_camera_frames: 60
+  wait_latest: true
+  # Give the asynchronous RGB/state decoders time to reach the same raw
+  # timestamps. The 60 ms alignment limit remains strict after the wait.
+  wait_latest_timeout_ms: 100.0
+  # Keep the 60 ms alignment requirement strict, but tolerate transient
+  # synchronized camera publish pauses before declaring the stream stalled.
+  observation_barrier_timeout_ms: 1000.0
+  camera_streams:
+    base_image: base_0_color
+    left_wrist_image: left_wrist_0_color
+    right_wrist_image: right_wrist_0_color
+  state_stream: robot_state
+
+inference:
+  project_root: ${oc.env:DIFFUSION_POLICY_ROOT,../diffusion_policy}
+  checkpoint: ???
+  device: cuda:0
+  # Match the checkpoint's training-time DDPM schedule by default. Launchers
+  # may override this explicitly for low-step ablation experiments.
+  num_inference_steps: 100
+  # Live DP100 takes about 3.08 control periods from the newest image to the
+  # first command. Skip those stale action positions in the full H=10 output.
+  # The dp16 launcher overrides this to 1 based on its measured 0.81 periods.
+  latency_compensation_steps: 3
+  use_ema: true
+  # One episode reuses one diffusion seed across all closed-loop chunks to
+  # avoid injecting a new random action mode at every A8 boundary. Persistent
+  # evaluation increments this base seed once per episode.
+  seed: 41
+
+action_hz: 10.0

@@ -1,0 +1,27 @@
+Prometheus-JepaPolicy real-robot inference release
+Copyright (c) 2026 Prometheus-JepaPolicy Authors
+
+This distribution contains modified third-party software:
+
+1. Much Ado About Noising / MIP
+   https://github.com/simchowitzlabpublic/much-ado-about-noising
+   MIT License, Copyright (c) 2025 Anonymous Authors.
+   The runtime/JEPA-Policy snapshot contains project-specific ARX-R5 and
+   future-supervised JEPA changes. Its upstream MIT license is preserved.
+
+2. Diffusion Policy
+   https://github.com/real-stanford/diffusion_policy
+   MIT License, Copyright (c) 2023 Columbia Artificial Intelligence and
+   Robotics Lab. The runtime/diffusion_policy snapshot contains project-
+   specific ARX-R5 dataset, transformer, and workspace changes. Its upstream
+   MIT license is preserved.
+
+3. ARX5 SDK (downloaded separately)
+   https://github.com/MrSecant/arx5-sdk
+   Pinned deployment commit: ce0d1e76a9237de30908ab259dd9f3e4621056cf
+   MIT License, Copyright (c) 2024 Yihuai Gao.
+
+The experiment archive did not retain the exact original upstream Git commit
+for the JEPA/MIP and Diffusion Policy forks. The source snapshots included in
+this release are therefore the authoritative versions for the reported
+real-robot inference code.

@@ -1,0 +1,71 @@
+run:
+  id: rollout_noop
+  output_dir: /private/tmp/prometheus_v3_rollout_noop/output
+  runtime_dir: ${run.output_dir}/runtime
+  wait_ready_timeout_s: 1.0
+  steps: 3
+
+robot:
+  _target_: prometheus.nodes.robots.noop.resolve_robot
+  id: noop
+  action_space: noop_action
+  action_dim: 2
+  control_domain_id: 0
+  sensor_domain_id: 0
+  streams: {}
+  client:
+    _target_: tests.noop.NoopRobotClient
+    action_space: ${robot.action_space}
+    action_dim: ${robot.action_dim}
+
+task:
+  id: noop_task
+  prompt:
+    - noop task
+  subtasks: []
+  metadata: {}
+
+hardware:
+  name: hardware
+  mode: owned
+  sensors: {}
+  streams: {}
+
+data:
+  name: data
+  mode: owned
+  history: 32
+  bridge:
+    enabled: true
+    name: ros_data
+    wait_all_streams: true
+    qos_depth: 10
+  recording:
+    enabled: false
+    queue_size: 4096
+
+policy:
+  _target_: tests.noop.NoopPolicy
+  action_space: ${robot.action_space}
+  action_dim: ${robot.action_dim}
+  hz: 20.0
+  horizon: 1
+  value: 0.0
+  stop_after: null
+  interrupt_after: null
+
+policy_session:
+  name: policy
+  mode: owned
+
+scheduler:
+  _target_: prometheus.policy.scheduler.ActionScheduler
+  dry_run: false
+  wait: true
+  timeout_s: 3.0
+  history: 1024
+  filters: []
+
+workflow:
+  stop_on_done: true
+  reset_home_on_interrupt: false

@@ -1,0 +1,19 @@
+name: arx_r5_image
+task_name: zhibei
+dataset_path: ${oc.env:PROMETHEUS_DATASET_ROOT,datasets}/${task.task_name}
+shape_meta: &shape_meta
+  obs:
+    base_image: {shape: [3, 128, 128], type: rgb}
+    left_wrist_image: {shape: [3, 128, 128], type: rgb}
+    right_wrist_image: {shape: [3, 128, 128], type: rgb}
+    state: {shape: [14], type: low_dim}
+  action: {shape: [14]}
+env_runner:
+  _target_: diffusion_policy.env_runner.base_image_runner.BaseImageRunner
+dataset:
+  _target_: diffusion_policy.dataset.arx_r5_image_dataset.ARXR5ImageDataset
+  dataset_path: ${task.dataset_path}
+  task_name: ${task.task_name}
+  horizon: ${horizon}
+  n_obs_steps: ${dataset_obs_steps}
+  val_ratio: 0.02

@@ -1,0 +1,560 @@
+{
+  "package": "arx4_real_robot_eval_5tasks_5ckpts_ema_20260818",
+  "tasks": [
+    "cabinet",
+    "cup_stack",
+    "cup_upright",
+    "pen_insert",
+    "plate_grape"
+  ],
+  "checkpoint_steps": [
+    60000,
+    80000,
+    100000,
+    140000,
+    180000
+  ],
+  "seed": 41,
+  "checkpoint_count": 75,
+  "ema_loading": {
+    "jepa": [
+      "encoder_ema",
+      "flow_map_ema"
+    ],
+    "mip": [
+      "encoder_ema",
+      "flow_map_ema"
+    ],
+    "diffusion_policy": [
+      "state_dicts.ema_model"
+    ]
+  },
+  "dual_arm_rule": "Both arms use the same task/method/step checkpoint.",
+  "checkpoints": [
+    {
+      "method": "jepa",
+      "task": "cabinet",
+      "step": 60000,
+      "relative_path": "checkpoints/jepa/cabinet/model_step060000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cabinet",
+      "step": 80000,
+      "relative_path": "checkpoints/jepa/cabinet/model_step080000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cabinet",
+      "step": 100000,
+      "relative_path": "checkpoints/jepa/cabinet/model_step100000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cabinet",
+      "step": 140000,
+      "relative_path": "checkpoints/jepa/cabinet/model_step140000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cabinet",
+      "step": 180000,
+      "relative_path": "checkpoints/jepa/cabinet/model_step180000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_stack",
+      "step": 60000,
+      "relative_path": "checkpoints/jepa/cup_stack/model_step060000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_stack",
+      "step": 80000,
+      "relative_path": "checkpoints/jepa/cup_stack/model_step080000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_stack",
+      "step": 100000,
+      "relative_path": "checkpoints/jepa/cup_stack/model_step100000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_stack",
+      "step": 140000,
+      "relative_path": "checkpoints/jepa/cup_stack/model_step140000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_stack",
+      "step": 180000,
+      "relative_path": "checkpoints/jepa/cup_stack/model_step180000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_upright",
+      "step": 60000,
+      "relative_path": "checkpoints/jepa/cup_upright/model_step060000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_upright",
+      "step": 80000,
+      "relative_path": "checkpoints/jepa/cup_upright/model_step080000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_upright",
+      "step": 100000,
+      "relative_path": "checkpoints/jepa/cup_upright/model_step100000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_upright",
+      "step": 140000,
+      "relative_path": "checkpoints/jepa/cup_upright/model_step140000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "cup_upright",
+      "step": 180000,
+      "relative_path": "checkpoints/jepa/cup_upright/model_step180000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "pen_insert",
+      "step": 60000,
+      "relative_path": "checkpoints/jepa/pen_insert/model_step060000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "pen_insert",
+      "step": 80000,
+      "relative_path": "checkpoints/jepa/pen_insert/model_step080000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "pen_insert",
+      "step": 100000,
+      "relative_path": "checkpoints/jepa/pen_insert/model_step100000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "pen_insert",
+      "step": 140000,
+      "relative_path": "checkpoints/jepa/pen_insert/model_step140000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "pen_insert",
+      "step": 180000,
+      "relative_path": "checkpoints/jepa/pen_insert/model_step180000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "plate_grape",
+      "step": 60000,
+      "relative_path": "checkpoints/jepa/plate_grape/model_step060000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "plate_grape",
+      "step": 80000,
+      "relative_path": "checkpoints/jepa/plate_grape/model_step080000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "plate_grape",
+      "step": 100000,
+      "relative_path": "checkpoints/jepa/plate_grape/model_step100000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "plate_grape",
+      "step": 140000,
+      "relative_path": "checkpoints/jepa/plate_grape/model_step140000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "jepa",
+      "task": "plate_grape",
+      "step": 180000,
+      "relative_path": "checkpoints/jepa/plate_grape/model_step180000.pt",
+      "bytes": 892653622
+    },
+    {
+      "method": "mip",
+      "task": "cabinet",
+      "step": 60000,
+      "relative_path": "checkpoints/mip/cabinet/model_step060000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cabinet",
+      "step": 80000,
+      "relative_path": "checkpoints/mip/cabinet/model_step080000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cabinet",
+      "step": 100000,
+      "relative_path": "checkpoints/mip/cabinet/model_step100000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cabinet",
+      "step": 140000,
+      "relative_path": "checkpoints/mip/cabinet/model_step140000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cabinet",
+      "step": 180000,
+      "relative_path": "checkpoints/mip/cabinet/model_step180000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_stack",
+      "step": 60000,
+      "relative_path": "checkpoints/mip/cup_stack/model_step060000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_stack",
+      "step": 80000,
+      "relative_path": "checkpoints/mip/cup_stack/model_step080000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_stack",
+      "step": 100000,
+      "relative_path": "checkpoints/mip/cup_stack/model_step100000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_stack",
+      "step": 140000,
+      "relative_path": "checkpoints/mip/cup_stack/model_step140000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_stack",
+      "step": 180000,
+      "relative_path": "checkpoints/mip/cup_stack/model_step180000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_upright",
+      "step": 60000,
+      "relative_path": "checkpoints/mip/cup_upright/model_step060000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_upright",
+      "step": 80000,
+      "relative_path": "checkpoints/mip/cup_upright/model_step080000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_upright",
+      "step": 100000,
+      "relative_path": "checkpoints/mip/cup_upright/model_step100000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_upright",
+      "step": 140000,
+      "relative_path": "checkpoints/mip/cup_upright/model_step140000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "cup_upright",
+      "step": 180000,
+      "relative_path": "checkpoints/mip/cup_upright/model_step180000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "pen_insert",
+      "step": 60000,
+      "relative_path": "checkpoints/mip/pen_insert/model_step060000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "pen_insert",
+      "step": 80000,
+      "relative_path": "checkpoints/mip/pen_insert/model_step080000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "pen_insert",
+      "step": 100000,
+      "relative_path": "checkpoints/mip/pen_insert/model_step100000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "pen_insert",
+      "step": 140000,
+      "relative_path": "checkpoints/mip/pen_insert/model_step140000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "pen_insert",
+      "step": 180000,
+      "relative_path": "checkpoints/mip/pen_insert/model_step180000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "plate_grape",
+      "step": 60000,
+      "relative_path": "checkpoints/mip/plate_grape/model_step060000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "plate_grape",
+      "step": 80000,
+      "relative_path": "checkpoints/mip/plate_grape/model_step080000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "plate_grape",
+      "step": 100000,
+      "relative_path": "checkpoints/mip/plate_grape/model_step100000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "plate_grape",
+      "step": 140000,
+      "relative_path": "checkpoints/mip/plate_grape/model_step140000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "mip",
+      "task": "plate_grape",
+      "step": 180000,
+      "relative_path": "checkpoints/mip/plate_grape/model_step180000.pt",
+      "bytes": 873728110
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cabinet",
+      "step": 60000,
+      "relative_path": "checkpoints/diffusion_policy/cabinet/step=060000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cabinet",
+      "step": 80000,
+      "relative_path": "checkpoints/diffusion_policy/cabinet/step=080000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cabinet",
+      "step": 100000,
+      "relative_path": "checkpoints/diffusion_policy/cabinet/step=100000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cabinet",
+      "step": 140000,
+      "relative_path": "checkpoints/diffusion_policy/cabinet/step=140000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cabinet",
+      "step": 180000,
+      "relative_path": "checkpoints/diffusion_policy/cabinet/step=180000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_stack",
+      "step": 60000,
+      "relative_path": "checkpoints/diffusion_policy/cup_stack/step=060000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_stack",
+      "step": 80000,
+      "relative_path": "checkpoints/diffusion_policy/cup_stack/step=080000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_stack",
+      "step": 100000,
+      "relative_path": "checkpoints/diffusion_policy/cup_stack/step=100000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_stack",
+      "step": 140000,
+      "relative_path": "checkpoints/diffusion_policy/cup_stack/step=140000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_stack",
+      "step": 180000,
+      "relative_path": "checkpoints/diffusion_policy/cup_stack/step=180000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_upright",
+      "step": 60000,
+      "relative_path": "checkpoints/diffusion_policy/cup_upright/step=060000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_upright",
+      "step": 80000,
+      "relative_path": "checkpoints/diffusion_policy/cup_upright/step=080000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_upright",
+      "step": 100000,
+      "relative_path": "checkpoints/diffusion_policy/cup_upright/step=100000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_upright",
+      "step": 140000,
+      "relative_path": "checkpoints/diffusion_policy/cup_upright/step=140000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "cup_upright",
+      "step": 180000,
+      "relative_path": "checkpoints/diffusion_policy/cup_upright/step=180000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "pen_insert",
+      "step": 60000,
+      "relative_path": "checkpoints/diffusion_policy/pen_insert/step=060000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "pen_insert",
+      "step": 80000,
+      "relative_path": "checkpoints/diffusion_policy/pen_insert/step=080000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "pen_insert",
+      "step": 100000,
+      "relative_path": "checkpoints/diffusion_policy/pen_insert/step=100000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "pen_insert",
+      "step": 140000,
+      "relative_path": "checkpoints/diffusion_policy/pen_insert/step=140000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "pen_insert",
+      "step": 180000,
+      "relative_path": "checkpoints/diffusion_policy/pen_insert/step=180000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "plate_grape",
+      "step": 60000,
+      "relative_path": "checkpoints/diffusion_policy/plate_grape/step=060000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "plate_grape",
+      "step": 80000,
+      "relative_path": "checkpoints/diffusion_policy/plate_grape/step=080000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "plate_grape",
+      "step": 100000,
+      "relative_path": "checkpoints/diffusion_policy/plate_grape/step=100000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "plate_grape",
+      "step": 140000,
+      "relative_path": "checkpoints/diffusion_policy/plate_grape/step=140000.ckpt",
+      "bytes": 861622440
+    },
+    {
+      "method": "diffusion_policy",
+      "task": "plate_grape",
+      "step": 180000,
+      "relative_path": "checkpoints/diffusion_policy/plate_grape/step=180000.ckpt",
+      "bytes": 861622440
+    }
+  ]
+}

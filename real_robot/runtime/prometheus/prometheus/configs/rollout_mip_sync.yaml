@@ -1,0 +1,21 @@
+defaults:
+  - rollout_jepa_sync
+  - override /policy: mip
+  - _self_
+
+user:
+  model_config_name: exps/arx_r5_mip_baseline
+  model_task: ???
+  checkpoint: ???
+  stats_path: ???
+
+policy:
+  inference:
+    config_name: ${user.model_config_name}
+    task: ${user.model_task}
+    checkpoint: ${user.checkpoint}
+    stats_path: ${user.stats_path}
+
+hydra:
+  run:
+    dir: outputs/hydra/rollout_mip_sync/${run.id}

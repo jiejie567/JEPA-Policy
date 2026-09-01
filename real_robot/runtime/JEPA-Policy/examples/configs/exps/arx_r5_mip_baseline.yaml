@@ -1,0 +1,65 @@
+# @package _global_
+defaults:
+  - /optimization: default
+  - /network: chitransformer
+  - /task: cabinet_arx_r5_image
+  - /log: default
+  - /eval: default
+  - _self_
+
+mode: train
+
+optimization:
+  loss_type: mip
+  seed: 41
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  batch_size: 128
+  gradient_steps: 300000
+  dataloader_num_workers: 8
+  dataloader_persistent_workers: true
+  use_compile: false
+  auto_resume: true
+  device: cuda
+  t_two_step: 0.9
+  future_t_two_step: 0.9
+  use_future_embed_loss: false
+  future_embed_loss_mode: mip_two_step
+  future_joint_mode: false
+  future_state_loss_mode: ratio
+  future_state_loss_ratio: 0.1
+  future_state_loss_weight_min: 0.000001
+  future_state_loss_weight_max: 0.1
+
+network:
+  emb_dim: 384
+  n_future_tokens: 0
+  rgb_model_name: resnet18
+  rgb_model_weights: null
+  imagenet_norm: false
+  use_causal_mask: false
+  use_memory_mask: false
+
+task:
+  future_state_enabled: false
+  future_state_steps: 4
+  future_state_steps_list: [4]
+  future_target_type: embedding
+
+eval:
+  parallel_rollout: false
+
+log:
+  wandb_mode: disabled
+  entity: jepa-policy
+  project: arx-r5
+  group: "${task.env_name}_mip_baseline"
+  exp_name: "${task.env_name}_arx_r5_mip_baseline_seed${optimization.seed}"
+  log_dir: "logs/arx_r5/${log.exp_name}"
+  log_freq: 1000
+  gradient_diagnostic_freq: 1000
+  validation_freq: 10000
+  validation_batch_size: 16
+  eval_freq: 0
+  save_freq: 10000
+  save_video: false

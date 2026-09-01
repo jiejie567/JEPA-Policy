@@ -1,0 +1,56 @@
+# @package task
+defaults:
+  - _self_
+
+env_name: ???
+env_type: arx_r5
+arx_r5_task_name: ???
+obs_type: image
+dataset_path: ???
+dataset_frequency_hz: 10.0
+abs_action: true
+
+obs_steps: 2
+horizon: 10
+act_steps: 8
+obs_dim: 14
+act_dim: 14
+arx_r5_state_dim: 14
+num_envs: 1
+max_episode_steps: 1000
+save_video: false
+render_obs_key: base_image
+val_dataset_percentage: 0.0
+
+resize_shape: [128, 128]
+crop_shape: null
+crop_ratio: 0.9
+random_crop: true
+crop_mode: temporal_consistent
+eval_crop_mode: center
+temporal_consistent_crop: true
+use_group_norm: true
+use_seq: true
+
+future_state_enabled: false
+future_state_steps: 4
+future_state_steps_list: [4]
+future_target_type: embedding
+use_action_history: false
+
+shape_meta:
+  action:
+    shape: [14]
+  obs:
+    base_image:
+      shape: [3, 128, 128]
+      type: rgb
+    left_wrist_image:
+      shape: [3, 128, 128]
+      type: rgb
+    right_wrist_image:
+      shape: [3, 128, 128]
+      type: rgb
+    state:
+      shape: [14]
+      type: low_dim

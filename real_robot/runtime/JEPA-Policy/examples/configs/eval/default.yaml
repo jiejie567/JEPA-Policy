@@ -1,0 +1,9 @@
+# @package eval
+parallel_rollout: false
+parallel_rollout_workers: 2
+persistent_workers: true
+rollout_seed: 12345
+episodes_per_worker: 2
+worker_timeout_seconds: 900
+output_path: "/tmp/parallel_image_rollout.json"
+num_steps: 1

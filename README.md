@@ -16,6 +16,7 @@ JEPA Policy trains a robot policy to predict an expert action chunk together wit
 - Image and state observations
 - robomimic, LIBERO, and MimicGen task support
 - Hydra configurations for training and evaluation
+- ARX5/X5 real-robot inference for JEPA Policy, MIP, and Diffusion Policy
 
 ## Installation
 
@@ -74,6 +75,28 @@ uv run examples/train_robomimic.py \
   optimization.seed=41 \
   optimization.gradient_steps=300000
 ```
+
+## Real-robot evaluation
+
+The [`real_robot/`](real_robot/README.md) directory contains the inference stack
+used for the ARX5/X5 experiments. It evaluates JEPA Policy, the matched MIP
+baseline, and Diffusion Policy through the same observation, action, safety,
+recording, and operator-labeling pipeline.
+
+The real-robot release includes:
+
+- the reported deployment source snapshots and pinned ARX5 SDK revision;
+- offline and observation-only dry-runs before hardware control is enabled;
+- launchers for all five reported tasks and all three methods;
+- the external checkpoint/statistics layout and a 75-checkpoint artifact
+  manifest; and
+- explicit hardware, camera, control-frequency, calibration, and emergency-stop
+  requirements.
+
+Checkpoints, datasets, robot recordings, camera serial numbers, compiled SDK
+binaries, and internal machine paths are intentionally excluded from Git. Start
+with the [real-robot installation and safety guide](real_robot/README.md) before
+running any launcher.
 
 ## Paper baselines
 

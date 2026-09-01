@@ -1,0 +1,8 @@
+numpy>=1.24.0,<2.0.0
+PyYAML>=6.0
+tqdm>=4.66.0
+timm>=0.9.12
+einops>=0.7.0
+tensorboard>=2.14.0
+matplotlib>=3.7.0
+opencv-python>=4.8.0

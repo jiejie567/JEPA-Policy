@@ -1,0 +1,8 @@
+# @package task
+defaults:
+  - arx_r5_base
+  - _self_
+
+env_name: pen_insert
+arx_r5_task_name: pen_insert
+dataset_path: ${oc.env:PROMETHEUS_DATASET_ROOT,datasets}/pen_insert

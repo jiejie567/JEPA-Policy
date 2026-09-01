@@ -1,0 +1,95 @@
+run:
+  id: rollout_dagger_noop
+  output_dir: /private/tmp/prometheus_v3_rollout_dagger_noop/output
+  runtime_dir: ${run.output_dir}/runtime
+  wait_ready_timeout_s: 1.0
+
+robot:
+  _target_: prometheus.nodes.robots.noop.resolve_robot
+  id: noop
+  action_space: noop_action
+  action_dim: 2
+  control_domain_id: 0
+  sensor_domain_id: 0
+  streams: {}
+  client:
+    _target_: tests.noop.NoopRobotClient
+    action_space: ${robot.action_space}
+    action_dim: ${robot.action_dim}
+
+task:
+  id: noop_task
+  prompt:
+    - noop task
+  subtasks: []
+  metadata: {}
+
+hardware:
+  name: hardware
+  mode: owned
+  sensors: {}
+  streams: {}
+
+data:
+  name: data
+  mode: owned
+  history: 32
+  bridge:
+    enabled: false
+    name: ros_data
+    wait_all_streams: true
+    qos_depth: 10
+  recording:
+    enabled: true
+    output_dir: ${run.output_dir}/episodes
+    queue_size: 16
+    fps: 30.0
+    default_event_value: 0
+
+policy:
+  _target_: tests.noop.NoopPolicy
+  action_space: ${robot.action_space}
+  action_dim: ${robot.action_dim}
+  hz: 20.0
+  horizon: 1
+  value: 0.0
+  stop_after: null
+
+policy_session:
+  name: policy
+  mode: owned
+
+scheduler:
+  _target_: prometheus.policy.scheduler.ActionScheduler
+  dry_run: false
+  wait: true
+  timeout_s: 3.0
+  history: 1024
+  filters: []
+
+event:
+  name: event
+  mode: owned
+  input_source: null
+  semantics:
+    0: pause
+    1: teaching
+    2: cycle
+
+dagger:
+  cycle_wait_s: 0.0
+  control_hz: 100.0
+  reset_home_timeout_s: 1.0
+  event_name: event_label
+
+workflow:
+  max_ticks: 12
+  max_cycles: 1
+  interrupt_accept_active_episode: false
+  scripted_events:
+    - name: teaching
+      value: true
+      after_ticks: 4
+    - name: cycle
+      value: true
+      after_ticks: 8
