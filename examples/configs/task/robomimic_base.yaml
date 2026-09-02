@@ -4,7 +4,8 @@ defaults:
   - _self_
 
 # Common dataset configuration
-dataset_repo: "ChaoyiPan/mip-dataset"
+dataset_repo: null
+dataset_path: null
 abs_action: true
 
 # Common required keys

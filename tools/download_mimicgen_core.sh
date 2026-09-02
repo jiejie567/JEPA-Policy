@@ -77,3 +77,7 @@ download_one \
   kitchen_d1 \
   7069704890 \
   e43e339f85283aca458a2455acfe013a0642d72b117412d3218844ffd7d82dfb
+download_one \
+  hammer_cleanup_d1 \
+  3092918856 \
+  069b4ee095b1810490271a3d23c1bbf60fea6398168b0dd5ef30e0be02004b10

@@ -112,9 +112,9 @@ The repository includes configurations for standard robomimic image/state tasks 
 
 - robomimic: Square, Tool Hang, and four-camera Transport
 - LIBERO: MokaMoka and MugMug
-- MimicGen: Coffee Preparation, Kitchen, and Three Piece Assembly
+- MimicGen: Coffee Preparation, Kitchen, Three Piece Assembly, and Hammer Cleanup
 
-robomimic datasets are resolved through the dataset repository configured in `examples/configs/task/robomimic_base.yaml`.
+For robomimic, provide a processed image dataset through `task.dataset_path=/path/to/data.hdf5`, or set `task.dataset_repo` to a repository that contains the configured `dataset_filename`.
 
 For LIBERO, set the installation and dataset paths:
 
@@ -122,7 +122,7 @@ For LIBERO, set the installation and dataset paths:
 export LIBERO_ROOT=/path/to/LIBERO
 ```
 
-For MimicGen, download the three task datasets and set their root:
+For MimicGen, download the four task datasets and set their root:
 
 ```bash
 bash tools/download_mimicgen_core.sh

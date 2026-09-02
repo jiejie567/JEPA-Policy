@@ -7,6 +7,7 @@ MIMICGEN_TASK_NAMES = {
     "coffee_preparation",
     "three_piece_assembly",
     "mimicgen_kitchen",
+    "hammer_cleanup",
 }
 
 
