@@ -10,11 +10,12 @@ trap 'rm -rf "$tmp_root"' EXIT
 git -C "$repo_root" archive --format=tar --prefix=JEPA-Policy/ HEAD \
   | tar -xf - -C "$tmp_root"
 
-readme="$tmp_root/JEPA-Policy/README.md"
-sed -i.bak \
-  "s#https://github.com/jiejie567/JEPA-Policy.git#$anon_url#g" \
-  "$readme"
-rm "$readme.bak"
+while IFS= read -r -d '' readme; do
+  sed -i.bak \
+    "s#https://github.com/jiejie567/JEPA-Policy.git#$anon_url#g" \
+    "$readme"
+  rm "$readme.bak"
+done < <(find "$tmp_root/JEPA-Policy" -type f -name 'README*.md' -print0)
 
 deny_pattern='jiejie567|Sun-Season|Apjocalypse|wuwoasd811|/mnt/data_nas|/root/'
 if grep -RInE --exclude=export_anonymous.sh "$deny_pattern" "$tmp_root/JEPA-Policy"; then

@@ -6,6 +6,8 @@
 
 </div>
 
+English | [中文](./README_CN.md)
+
 JEPA Policy trains a robot policy to predict an expert action chunk together with the visual representation of the future observation produced by that action. Action and future-representation tokens share one Transformer and are refined in two feed-forward prediction steps. The implementation builds on the [Minimum Flow Policies](https://github.com/simchowitzlabpublic/much-ado-about-noising) codebase.
 
 ## Features
