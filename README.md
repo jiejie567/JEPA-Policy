@@ -14,7 +14,9 @@ JEPA Policy trains a robot policy to predict an expert action chunk together wit
 
 ## Method at a glance
 
-[![Comparison of Diffusion Policy, plain JEPA, ACT-JEPA, and JEPA Policy](docs/images/method-comparison.jpg)](docs/images/method-comparison.jpg)
+<p align="center">
+  <a href="docs/images/method-comparison.jpg"><img src="docs/images/method-comparison.jpg" width="460" alt="Comparison of Diffusion Policy, plain JEPA, ACT-JEPA, and JEPA Policy"></a>
+</p>
 
 Figure 1 compares design paradigms, not performance. JEPA Policy jointly predicts actions and future representations in a shared, two-step diffusion-free Transformer. Click the image for the full-resolution view.
 
@@ -30,7 +32,9 @@ Figure 1 compares design paradigms, not performance. JEPA Policy jointly predict
 
 ## Simulation results
 
-[![Nine-task success-rate comparison including Hammer Cleanup](docs/images/simulation-radar.png)](docs/images/simulation-radar.png)
+<p align="center">
+  <a href="docs/images/simulation-radar.png"><img src="docs/images/simulation-radar.png" width="560" alt="Nine-task success-rate comparison including Hammer Cleanup"></a>
+</p>
 
 Success rates on nine simulated tasks, including Hammer Cleanup. Lines show the three-seed mean best-checkpoint success rate; shaded bands show the seed range. The radial axis spans 40–100%; the downward triangle marks a seed below the axis floor. See the [project page](https://jiejie567.github.io/JEPA-Policy/) and paper for the full results and evaluation protocol.
 

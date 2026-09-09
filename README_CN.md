@@ -14,7 +14,9 @@ JEPA Policy 训练机器人策略，使其同时预测专家动作片段，以�
 
 ## 方法概览
 
-[![Diffusion Policy、普通 JEPA、ACT-JEPA 与 JEPA Policy 的原理对比](docs/images/method-comparison.jpg)](docs/images/method-comparison.jpg)
+<p align="center">
+  <a href="docs/images/method-comparison.jpg"><img src="docs/images/method-comparison.jpg" width="460" alt="Diffusion Policy、普通 JEPA、ACT-JEPA 与 JEPA Policy 的原理对比"></a>
+</p>
 
 图 1 对比的是设计范式，而非性能。JEPA Policy 在共享 Transformer 中，通过两步无扩散预测联合生成动作与未来表征。点击图片可查看高清原图。
 
@@ -30,7 +32,9 @@ JEPA Policy 训练机器人策略，使其同时预测专家动作片段，以�
 
 ## 仿真结果
 
-[![包含 Hammer Cleanup 的九任务成功率对比](docs/images/simulation-radar.png)](docs/images/simulation-radar.png)
+<p align="center">
+  <a href="docs/images/simulation-radar.png"><img src="docs/images/simulation-radar.png" width="560" alt="包含 Hammer Cleanup 的九任务成功率对比"></a>
+</p>
 
 九个仿真任务的成功率对比，包含 Hammer Cleanup。曲线为三个训练种子的最佳 checkpoint 成功率均值，阴影为种子间范围。径向坐标为 40–100%，向下三角标记低于坐标下限的种子结果。完整结果与评估协议见[项目主页](https://jiejie567.github.io/JEPA-Policy/)及论文。
 
