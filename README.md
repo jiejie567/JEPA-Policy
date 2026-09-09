@@ -4,6 +4,8 @@
 
 **Diffusion-Free Imitation Learning via Paired Action and Future Representation Prediction**
 
+[Project Page](https://jiejie567.github.io/JEPA-Policy/) · [Code](https://github.com/jiejie567/JEPA-Policy)
+
 </div>
 
 English | [中文](./README_CN.md)
