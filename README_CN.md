@@ -12,6 +12,12 @@
 
 JEPA Policy 训练机器人策略，使其同时预测专家动作片段，以及执行该动作后产生的未来观测的视觉表征。动作 token 与未来表征 token 共享同一个 Transformer，并通过两次前馈预测逐步细化。本实现基于 [Minimum Flow Policies](https://github.com/simchowitzlabpublic/much-ado-about-noising) 代码库。
 
+## 方法概览
+
+[![Diffusion Policy、普通 JEPA、ACT-JEPA 与 JEPA Policy 的原理对比](docs/images/method-comparison.jpg)](docs/images/method-comparison.jpg)
+
+图 1 对比的是设计范式，而非性能。JEPA Policy 在共享 Transformer 中，通过两步无扩散预测联合生成动作与未来表征。点击图片可查看高清原图。
+
 ## 特性
 
 - 动作与未来表征共享 Transformer
@@ -21,6 +27,12 @@ JEPA Policy 训练机器人策略，使其同时预测专家动作片段，以�
 - 支持 robomimic、LIBERO 和 MimicGen 任务
 - 使用 Hydra 配置训练与评估
 - 支持 JEPA Policy、MIP 和 Diffusion Policy 在 ARX5/X5 真实机器人上的推理
+
+## 仿真结果
+
+[![包含 Hammer Cleanup 的九任务成功率对比](docs/images/simulation-radar.png)](docs/images/simulation-radar.png)
+
+九个仿真任务的成功率对比，包含 Hammer Cleanup。曲线为三个训练种子的最佳 checkpoint 成功率均值，阴影为种子间范围。径向坐标为 40–100%，向下三角标记低于坐标下限的种子结果。完整结果与评估协议见[项目主页](https://jiejie567.github.io/JEPA-Policy/)及论文。
 
 ## 安装
 
