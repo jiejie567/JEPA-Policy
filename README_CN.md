@@ -4,7 +4,7 @@
 
 **通过动作与未来表征的配对预测，实现无扩散过程的模仿学习**
 
-[论文（arXiv:2609.09630）](https://arxiv.org/abs/2609.09630) · [项目主页](https://jiejie567.github.io/JEPA-Policy/) · [代码仓库](https://github.com/jiejie567/JEPA-Policy)
+[论文](https://arxiv.org/abs/2609.09630) · [项目主页](https://jiejie567.github.io/JEPA-Policy/) · [代码仓库](https://github.com/jiejie567/JEPA-Policy)
 
 </div>
 
