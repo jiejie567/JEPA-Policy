@@ -10,7 +10,19 @@
 
 English | [中文](./README_CN.md)
 
-JEPA Policy trains a robot policy to predict an expert action chunk together with the visual representation of the future observation produced by that action. Action and future-representation tokens share one Transformer and are refined in two feed-forward prediction steps. The implementation builds on the [Minimum Flow Policies](https://github.com/simchowitzlabpublic/much-ado-about-noising) codebase.
+JEPA Policy is a diffusion-free imitation-learning policy that predicts robot actions and a future observation's representation together. Both targets come from the same demonstration. A shared Transformer makes the joint prediction in two forward passes, with the visual encoder trained from scratch.
+
+This repository contains training and evaluation code, matched baseline configurations, and the real-robot deployment stack. It builds on the [Minimum Flow Policies](https://github.com/simchowitzlabpublic/much-ado-about-noising) codebase.
+
+## Video
+
+<table align="center"><tr><td width="640">
+
+https://github.com/user-attachments/assets/71be708b-ebd8-4e8f-9317-58a0c748d889
+
+</td></tr></table>
+
+A 1 min 45 sec overview of the method, Coffee Preparation and Tool Hang comparisons, inference latency, and five real-robot tasks. Play here or [watch on the project page](https://jiejie567.github.io/JEPA-Policy/#film). The video is silent; full-screen playback is available for the method diagrams.
 
 ## Method at a glance
 
@@ -18,17 +30,15 @@ JEPA Policy trains a robot policy to predict an expert action chunk together wit
   <a href="docs/images/method-comparison.jpg"><img src="docs/images/method-comparison.jpg" width="460" alt="Comparison of Diffusion Policy, plain JEPA, ACT-JEPA, and JEPA Policy"></a>
 </p>
 
-Figure 1 compares design paradigms, not performance. JEPA Policy jointly predicts actions and future representations in a shared, two-step diffusion-free Transformer. Click the image for the full-resolution view.
+Architecture comparison with Diffusion Policy, plain JEPA, and ACT-JEPA. JEPA Policy uses shared attention for action and future-representation prediction. This figure compares designs, not performance; click to view the original.
 
-## Features
+## What's included
 
-- Shared action and future-representation Transformer
-- Two-step, diffusion-free MIP training and inference
-- End-to-end visual encoder with stopped future targets
-- Image and state observations
-- robomimic, LIBERO, and MimicGen task support
-- Hydra configurations for training and evaluation
-- ARX5/X5 real-robot inference for JEPA Policy, MIP, and Diffusion Policy
+- Joint action and future prediction, with two-step MIP training and inference
+- End-to-end visual encoder training, with stop-gradient on future targets
+- Image/state observation support and Hydra training/evaluation configurations
+- robomimic, LIBERO, and MimicGen task configurations
+- ARX5/X5 deployment for JEPA Policy, MIP, and Diffusion Policy
 
 ## Simulation results
 
