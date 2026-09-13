@@ -4,6 +4,8 @@
 
 **Diffusion-Free Imitation Learning via Paired Action and Future Representation Prediction**
 
+<a href="https://anyverse.com/"><img src="docs/images/anyverse-dynamics-logo.png" width="280" alt="Anyverse Dynamics"></a>
+
 [Paper](https://arxiv.org/abs/2609.09630) · [Project Page](https://jiejie567.github.io/JEPA-Policy/) · [Code](https://github.com/jiejie567/JEPA-Policy)
 
 </div>
