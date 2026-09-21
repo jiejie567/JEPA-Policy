@@ -4,6 +4,12 @@
 
 **Diffusion-Free Imitation Learning via Paired Action and Future Representation Prediction**
 
+Jie Xu, Kangjin Yu, Ziyi Jin, Junjie Gao, Liqing Chen, Yixian Li, Shuai Tian, Zhongpu Xia<sup>*</sup>
+
+**Anyverse Dynamics**
+
+<sup>*</sup> Corresponding author: Zhongpu Xia. Contact: Jie Xu ([jeff_xu_0503@foxmail.com](mailto:jeff_xu_0503@foxmail.com)).
+
 <a href="https://anyverse.com/"><img src="docs/images/anyverse-dynamics-logo.png" width="280" alt="Anyverse Dynamics"></a>
 
 [Paper](https://arxiv.org/abs/2609.09630) · [Project Page](https://jiejie567.github.io/JEPA-Policy/) · [Code](https://github.com/jiejie567/JEPA-Policy)
