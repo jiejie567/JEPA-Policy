@@ -107,3 +107,43 @@ def test_state_future_loss_multi_step_shape_matches():
     )
     assert torch.isfinite(loss)
     assert torch.isfinite(info["loss_future_raw"])
+
+
+def test_state_future_loss_skipped_without_future_head():
+    """Networks without a future head (2-tuple output) must not raise when a
+    future target is supplied; the future loss is simply skipped."""
+    emb_dim = 64
+    config = _optimization_config(future_state_loss_mode="fixed")
+    from jepa_policy.networks.mlp import MLP
+
+    torch.manual_seed(0)
+    net = MLP(
+        act_dim=10,
+        Ta=10,
+        obs_dim=emb_dim,
+        To=2,
+        emb_dim=emb_dim,
+        n_layers=4,
+        dropout=0.1,
+        timestep_emb_dim=32,
+    )
+    flow_map = FlowMap(net)
+    encoder = MLPEncoder(obs_dim=53, emb_dim=emb_dim, To=2)
+
+    act = torch.randn(4, 10, 10)
+    obs = torch.randn(4, 2, 53)
+    delta_t = torch.full((4,), 0.5)
+    future_obs = {"state": torch.randn(4, 53)}
+
+    loss, info = mip_loss(
+        config,
+        flow_map,
+        encoder,
+        interp=None,
+        act=act,
+        obs=obs,
+        delta_t=delta_t,
+        future_obs=future_obs,
+    )
+    assert torch.isfinite(loss)
+    assert "loss_future" not in info

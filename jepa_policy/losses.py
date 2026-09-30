@@ -215,8 +215,18 @@ def mip_loss(
                 f"Unsupported future_target_type: {config.future_target_type!r}"
             )
 
-        future_pred_0 = flow_map.net(act_0, s, t, obs_emb)[2]
-        future_pred_1 = flow_map.net(act_t, t, torch.ones_like(t), obs_emb)[2]
+        def _future_pred(outputs):
+            # Networks without a future head (MLP, RNN, UNet, SudeepDiT, ...)
+            # return a 2-tuple (action, scalar). Only ChiTransformer-style
+            # networks return a third future-prediction element. Treat a
+            # missing third element the same as an explicit None so the
+            # future loss is skipped instead of raising an IndexError.
+            if not isinstance(outputs, (tuple, list)) or len(outputs) < 3:
+                return None
+            return outputs[2]
+
+        future_pred_0 = _future_pred(flow_map.net(act_0, s, t, obs_emb))
+        future_pred_1 = _future_pred(flow_map.net(act_t, t, torch.ones_like(t), obs_emb))
         if future_pred_0 is not None and future_pred_1 is not None:
             future_loss_0 = torch.mean(
                 ((future_pred_0 - future_target) / config.t_two_step) ** 2
