@@ -187,8 +187,23 @@ def mip_loss(
                     "or a dict containing a 'state' tensor. For image/dict observations, "
                     "use future_target_type='embedding'."
                 )
-
-        if config.future_target_type == "embedding":
+            future_state = future_obs
+            # The future head outputs embeddings of dim `emb_dim`, so the raw
+            # (B, obs_dim) state must be projected through the encoder to match.
+            # This mirrors TrainingAgent._encode_future_target: a single future
+            # state (B, obs_dim) is expanded across the observation horizon
+            # before encoding and the sequence dimension is reduced afterwards.
+            if future_state.dim() == 2 and hasattr(encoder, "To"):
+                future_state = future_state.unsqueeze(1).expand(-1, encoder.To, -1)
+                future_target = encoder(future_state, None)
+                if future_target.dim() == 3:
+                    future_target = future_target.mean(dim=1)
+            else:
+                future_target = encoder(future_state, None)
+                if future_target.dim() == 3 and future_target.shape[1] != 1:
+                    future_target = future_target.mean(dim=1, keepdim=True)
+            future_target = future_target.squeeze(1).detach()
+        elif config.future_target_type == "embedding":
             if isinstance(future_obs, dict) and getattr(encoder, "use_seq", False):
                 future_obs = {k: v.unsqueeze(1) for k, v in future_obs.items()}
             future_target = encoder(future_obs, None)
@@ -196,10 +211,22 @@ def mip_loss(
                 future_target = future_target.mean(dim=1, keepdim=True)
             future_target = future_target.squeeze(1).detach()
         else:
-            future_target = future_obs.squeeze(1)
+            raise ValueError(
+                f"Unsupported future_target_type: {config.future_target_type!r}"
+            )
 
-        future_pred_0 = flow_map.net(act_0, s, t, obs_emb)[2]
-        future_pred_1 = flow_map.net(act_t, t, torch.ones_like(t), obs_emb)[2]
+        def _future_pred(outputs):
+            # Networks without a future head (MLP, RNN, UNet, SudeepDiT, ...)
+            # return a 2-tuple (action, scalar). Only ChiTransformer-style
+            # networks return a third future-prediction element. Treat a
+            # missing third element the same as an explicit None so the
+            # future loss is skipped instead of raising an IndexError.
+            if not isinstance(outputs, (tuple, list)) or len(outputs) < 3:
+                return None
+            return outputs[2]
+
+        future_pred_0 = _future_pred(flow_map.net(act_0, s, t, obs_emb))
+        future_pred_1 = _future_pred(flow_map.net(act_t, t, torch.ones_like(t), obs_emb))
         if future_pred_0 is not None and future_pred_1 is not None:
             future_loss_0 = torch.mean(
                 ((future_pred_0 - future_target) / config.t_two_step) ** 2
